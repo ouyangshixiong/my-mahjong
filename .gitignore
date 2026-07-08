@@ -1,0 +1,11 @@
+/*
+!/.gitignore
+!/mahjong-electron-ai/
+!/mahjong-electron-ai/**
+
+/mahjong-electron-ai/node_modules
+/mahjong-electron-ai/node_modules/**
+/mahjong-electron-ai/dist
+/mahjong-electron-ai/dist/**
+/mahjong-electron-ai/*.log
+/mahjong-electron-ai/.DS_Store

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BeiMi Mahjong AI Trainer</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>贝密麻将 AI 训练台</h1>
+          <p id="roundStatus">初始化中</p>
+        </div>
+        <div class="toolbar">
+          <label class="ruleset-control">
+            <span>玩法</span>
+            <select id="rulesetSelect"></select>
+          </label>
+          <button id="updateRulesButton" type="button">更新玩法</button>
+          <button id="newRoundButton" type="button">新牌局</button>
+          <button id="askAiButton" type="button">AI 建议</button>
+          <button id="huButton" type="button">胡牌</button>
+        </div>
+      </section>
+
+      <section class="table">
+        <div class="opponent opponent-top">
+          <div class="seat-name">对家</div>
+          <div id="player2Hand" class="closed-hand"></div>
+          <div id="player2River" class="river"></div>
+        </div>
+
+        <div class="opponent opponent-left">
+          <div class="seat-name">上家</div>
+          <div id="player1Hand" class="closed-hand vertical"></div>
+          <div id="player1River" class="river vertical-river"></div>
+        </div>
+
+        <div class="center-panel">
+          <div class="wall-card">
+            <span id="wallCount">0</span>
+            <small>墙牌</small>
+          </div>
+          <div id="messageLog" class="message-log"></div>
+        </div>
+
+        <div class="opponent opponent-right">
+          <div class="seat-name">下家</div>
+          <div id="player3Hand" class="closed-hand vertical"></div>
+          <div id="player3River" class="river vertical-river"></div>
+        </div>
+
+        <div class="self-area">
+          <div id="selfRiver" class="river self-river"></div>
+          <div id="selfHand" class="hand"></div>
+        </div>
+      </section>
+
+      <aside class="advisor">
+        <header>
+          <strong>策略面板</strong>
+          <span id="rulesetBadge">玩法未加载</span>
+          <span id="serviceBadge">AI 服务连接中</span>
+        </header>
+        <div id="advisorContent" class="advisor-content"></div>
+      </aside>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
