@@ -13,10 +13,28 @@ test("recommends hu when the hand is already complete", () => {
     ],
     visibleTiles: [],
     lackSuit: null,
+    mustDiscard: false,
     rulesetId: "hongzhong"
   });
   assert.equal(result.action, "hu");
   assert.equal(result.discard, null);
+});
+
+test("returns a discard when a completed hand must discard after a peng", () => {
+  const result = recommendDiscard({
+    hand: [
+      "m1", "m2", "m3",
+      "m4", "m5", "m6",
+      "p2", "p3", "p4",
+      "p9", "p9"
+    ],
+    visibleTiles: ["s7", "s7", "s7"],
+    lackSuit: null,
+    mustDiscard: true,
+    rulesetId: "hongzhong"
+  });
+  assert.equal(result.action, "discard");
+  assert.equal(typeof result.discard, "string");
 });
 
 test("ranks legal discards for an incomplete 14-tile hand", () => {
@@ -31,6 +49,7 @@ test("ranks legal discards for an incomplete 14-tile hand", () => {
     ],
     visibleTiles: [],
     lackSuit: null,
+    mustDiscard: false,
     rulesetId: "hongzhong"
   });
 
@@ -49,6 +68,7 @@ test("sichuan recommendation only ranks declared-suit tiles until dingque is cle
     ],
     visibleTiles: [],
     lackSuit: "m",
+    mustDiscard: false,
     rulesetId: "sichuan-xuezhan"
   });
 

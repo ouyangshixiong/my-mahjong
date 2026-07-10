@@ -30,6 +30,9 @@ function assertStrategyPayload(payload) {
   if (!Object.prototype.hasOwnProperty.call(payload, "lackSuit")) {
     throw new Error("lackSuit is required");
   }
+  if (typeof payload.mustDiscard !== "boolean") {
+    throw new Error("mustDiscard must be boolean");
+  }
 }
 
 function recommendDiscard(payload) {
@@ -44,7 +47,7 @@ function recommendDiscard(payload) {
   }
 
   const analysis = analyzeHand({ hand, visibleTiles, lackSuit }, ruleset);
-  if (isWinningHand(hand, ruleset, lackSuit)) {
+  if (isWinningHand(hand, ruleset, lackSuit) && !payload.mustDiscard) {
     return {
       action: "hu",
       discard: null,

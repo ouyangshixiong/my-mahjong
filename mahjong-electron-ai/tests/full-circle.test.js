@@ -2,8 +2,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { recommendDiscard } = require("../server/ai");
 const {
+  chooseExchangeTiles,
   chooseLackSuit,
   countTiles,
+  exchangeHands,
   legalDiscardTiles,
   removeOneTile,
   scoreHand,
@@ -49,6 +51,9 @@ function playRound({ ruleset, seed, dealerIndex }) {
     }
   }
 
+  const exchangeSelections = state.hands.map((hand) => chooseExchangeTiles(hand, ruleset).tiles);
+  state.hands = exchangeHands(state.hands, exchangeSelections, "clockwise", ruleset).hands;
+
   for (let playerIndex = 0; playerIndex < PLAYER_COUNT; playerIndex += 1) {
     state.lackSuits[playerIndex] = chooseLackSuit(state.hands[playerIndex], ruleset).lackSuit;
   }
@@ -72,7 +77,8 @@ function playRound({ ruleset, seed, dealerIndex }) {
       rulesetId: ruleset.id,
       hand: state.hands[currentPlayer],
       visibleTiles: state.discards.flat(),
-      lackSuit: state.lackSuits[currentPlayer]
+      lackSuit: state.lackSuits[currentPlayer],
+      mustDiscard: false
     });
 
     if (decision.action === "hu") {

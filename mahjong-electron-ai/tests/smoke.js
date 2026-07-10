@@ -29,6 +29,23 @@ async function main() {
     assert.equal(Object.keys(xuezhan.ruleset.tileCounts).length, 27);
     assert.equal(xuezhan.ruleset.gameplay.requiresDingque, true);
     assert.equal(xuezhan.ruleset.gameplay.mustDiscardDingqueFirst, true);
+    assert.equal(xuezhan.ruleset.gameplay.requiresExchangeThree, true);
+    assert.equal(xuezhan.ruleset.gameplay.allowPeng, true);
+    assert.equal(xuezhan.ruleset.gameplay.allowGang, true);
+    assert.equal(xuezhan.ruleset.gameplay.allowRobGang, true);
+    assert.equal(xuezhan.ruleset.gameplay.gangPaoTransferMode, "refund");
+    assert.equal(xuezhan.ruleset.scoring.aggregation, "sum");
+
+    const exchange = await postJson(`${baseUrl}/ai/exchange`, {
+      rulesetId: "sichuan-xuezhan",
+      hand: [
+        "m1", "m2", "m3", "m4", "m5",
+        "p1", "p2", "p3",
+        "s1", "s2", "s3", "s4", "s5"
+      ]
+    });
+    assert.equal(exchange.tiles.length, 3);
+    assert.equal(new Set(exchange.tiles.map((tile) => tile[0])).size, 1);
 
     const lackSuit = await postJson(`${baseUrl}/ai/lack-suit`, {
       rulesetId: "sichuan-xuezhan",
@@ -67,7 +84,8 @@ async function main() {
         "m9"
       ],
       visibleTiles: [],
-      lackSuit: null
+      lackSuit: null,
+      mustDiscard: false
     });
     assert.equal(decision.action, "discard");
     assert.equal(typeof decision.reason, "string");

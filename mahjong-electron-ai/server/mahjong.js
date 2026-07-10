@@ -40,6 +40,7 @@ const TILE_BY_ID = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => [til
 const TILE_ORDER = Object.freeze(Object.fromEntries(TILE_IDS.map((tile, index) => [tile, index])));
 const SUITED_SUITS = Object.freeze(["m", "p", "s"]);
 const SUIT_LABELS = Object.freeze({ m: "万", p: "筒", s: "条" });
+const EXCHANGE_DIRECTIONS = Object.freeze(["clockwise", "counterclockwise", "across"]);
 
 function assertRuleset(ruleset) {
   if (ruleset === null || typeof ruleset !== "object") {
@@ -195,6 +196,176 @@ function legalDiscardTiles(hand, ruleset, lackSuit) {
     return uniqueTiles;
   }
   return uniqueTiles.filter((tile) => TILE_BY_ID[tile].suit === lackSuit);
+}
+
+function assertExchangeDirection(direction) {
+  if (!EXCHANGE_DIRECTIONS.includes(direction)) {
+    throw new Error(`exchange direction must be one of: ${EXCHANGE_DIRECTIONS.join(", ")}`);
+  }
+}
+
+function exchangeDirectionOffset(direction) {
+  assertExchangeDirection(direction);
+  if (direction === "clockwise") {
+    return 3;
+  }
+  if (direction === "counterclockwise") {
+    return 1;
+  }
+  if (direction === "across") {
+    return 2;
+  }
+  throw new Error(`Unsupported exchange direction: ${direction}`);
+}
+
+function removeTiles(hand, tiles, ruleset) {
+  let remaining = normalizeHand(hand, ruleset);
+  for (const tile of normalizeHand(tiles, ruleset)) {
+    remaining = removeOneTile(remaining, tile, ruleset);
+  }
+  return sortTiles(remaining);
+}
+
+function assertExchangeSelection(hand, selection, ruleset) {
+  const normalizedHand = normalizeHand(hand, ruleset);
+  const normalizedSelection = normalizeHand(selection, ruleset);
+  if (!ruleset.gameplay.requiresExchangeThree) {
+    throw new Error(`ruleset ${ruleset.id} does not use exchange-three`);
+  }
+  if (normalizedSelection.length !== ruleset.gameplay.exchangeTileCount) {
+    throw new Error(`exchange selection must contain ${ruleset.gameplay.exchangeTileCount} tiles`);
+  }
+  const suits = new Set(normalizedSelection.map((tile) => TILE_BY_ID[tile].suit));
+  if (ruleset.gameplay.exchangeSameSuit && suits.size !== 1) {
+    throw new Error("exchange selection must use one suit");
+  }
+  if ([...suits].some((suit) => !SUITED_SUITS.includes(suit))) {
+    throw new Error("exchange selection must contain suited tiles");
+  }
+  removeTiles(normalizedHand, normalizedSelection, ruleset);
+  return normalizedSelection;
+}
+
+function uniqueTileCombinations(tiles, count) {
+  const sorted = sortTiles(tiles);
+  const combinations = [];
+  function visit(startIndex, selected) {
+    if (selected.length === count) {
+      combinations.push([...selected]);
+      return;
+    }
+    for (let index = startIndex; index <= sorted.length - (count - selected.length); index += 1) {
+      if (index > startIndex && sorted[index] === sorted[index - 1]) {
+        continue;
+      }
+      selected.push(sorted[index]);
+      visit(index + 1, selected);
+      selected.pop();
+    }
+  }
+  visit(0, []);
+  return combinations;
+}
+
+function chooseExchangeTiles(hand, ruleset) {
+  const normalized = normalizeHand(hand, ruleset);
+  if (!ruleset.gameplay.requiresExchangeThree) {
+    throw new Error(`ruleset ${ruleset.id} does not use exchange-three`);
+  }
+  if (normalized.length !== ruleset.gameplay.initialHandSize && normalized.length !== ruleset.gameplay.dealerDraws) {
+    throw new Error("exchange-three recommendation requires an initial 13-tile or dealer 14-tile hand");
+  }
+
+  const ranked = [];
+  for (const suit of SUITED_SUITS) {
+    const suitedTiles = normalized.filter((tile) => TILE_BY_ID[tile].suit === suit);
+    if (suitedTiles.length < ruleset.gameplay.exchangeTileCount) {
+      continue;
+    }
+    const candidates = uniqueTileCombinations(suitedTiles, ruleset.gameplay.exchangeTileCount)
+      .map((tiles) => ({
+        tiles,
+        remainingShapeScore: structuralShapeScore(removeTiles(normalized, tiles, ruleset), ruleset)
+      }))
+      .sort((left, right) => {
+        if (right.remainingShapeScore !== left.remainingShapeScore) {
+          return right.remainingShapeScore - left.remainingShapeScore;
+        }
+        for (let index = 0; index < left.tiles.length; index += 1) {
+          const orderDifference = TILE_ORDER[left.tiles[index]] - TILE_ORDER[right.tiles[index]];
+          if (orderDifference !== 0) {
+            return orderDifference;
+          }
+        }
+        return 0;
+      });
+    const best = candidates[0];
+    ranked.push({
+      suit,
+      label: suitLabel(suit),
+      suitTileCount: suitedTiles.length,
+      tiles: best.tiles,
+      tileLabels: best.tiles.map(tileLabel),
+      remainingShapeScore: best.remainingShapeScore
+    });
+  }
+
+  ranked.sort((left, right) => {
+    if (left.suitTileCount !== right.suitTileCount) {
+      return left.suitTileCount - right.suitTileCount;
+    }
+    if (right.remainingShapeScore !== left.remainingShapeScore) {
+      return right.remainingShapeScore - left.remainingShapeScore;
+    }
+    return SUITED_SUITS.indexOf(left.suit) - SUITED_SUITS.indexOf(right.suit);
+  });
+  const best = ranked[0];
+  if (best === undefined) {
+    throw new Error("no legal exchange-three selection found");
+  }
+  return {
+    suit: best.suit,
+    suitLabel: best.label,
+    tiles: best.tiles,
+    tileLabels: best.tileLabels,
+    reason: `建议换出${best.tileLabels.join("、")}：${best.label}牌共 ${best.suitTileCount} 张，换出后保留结构分 ${best.remainingShapeScore}。`,
+    ranked
+  };
+}
+
+function exchangeHands(hands, selections, direction, ruleset) {
+  if (!Array.isArray(hands) || hands.length !== 4) {
+    throw new Error("exchangeHands requires four hands");
+  }
+  if (!Array.isArray(selections) || selections.length !== 4) {
+    throw new Error("exchangeHands requires four selections");
+  }
+  assertExchangeDirection(direction);
+  const normalizedHands = hands.map((hand) => normalizeHand(hand, ruleset));
+  const normalizedSelections = selections.map((selection, playerIndex) => (
+    assertExchangeSelection(normalizedHands[playerIndex], selection, ruleset)
+  ));
+  const nextHands = normalizedHands.map((hand, playerIndex) => (
+    removeTiles(hand, normalizedSelections[playerIndex], ruleset)
+  ));
+  const received = Array.from({ length: 4 }, () => []);
+  const offset = exchangeDirectionOffset(direction);
+  for (let senderIndex = 0; senderIndex < 4; senderIndex += 1) {
+    const receiverIndex = (senderIndex + offset) % 4;
+    received[receiverIndex] = normalizedSelections[senderIndex];
+    nextHands[receiverIndex] = sortTiles([...nextHands[receiverIndex], ...normalizedSelections[senderIndex]]);
+  }
+  const beforeCounts = countTiles(normalizedHands.flat(), ruleset);
+  const afterCounts = countTiles(nextHands.flat(), ruleset);
+  if (JSON.stringify(beforeCounts) !== JSON.stringify(afterCounts)) {
+    throw new Error("exchange-three violated tile conservation");
+  }
+  return {
+    direction,
+    hands: nextHands,
+    sent: normalizedSelections,
+    received
+  };
 }
 
 function canFormSevenPairs(hand, ruleset) {
@@ -644,6 +815,7 @@ module.exports = {
   TILE_BY_ID,
   TILE_ORDER,
   SUITED_SUITS,
+  EXCHANGE_DIRECTIONS,
   assertTile,
   assertLackSuit,
   normalizeHand,
@@ -655,6 +827,9 @@ module.exports = {
   removeOneTile,
   hasDingqueTiles,
   legalDiscardTiles,
+  assertExchangeSelection,
+  chooseExchangeTiles,
+  exchangeHands,
   chooseLackSuit,
   isWinningHand,
   winningTiles,

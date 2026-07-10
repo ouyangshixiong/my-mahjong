@@ -2,7 +2,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   analyzeHand,
+  assertExchangeSelection,
+  chooseExchangeTiles,
   chooseLackSuit,
+  exchangeHands,
   isWinningHand,
   legalDiscardTiles,
   readyAfterDiscards,
@@ -127,6 +130,54 @@ test("dingque recommendation chooses the least populated suit", () => {
   assert.equal(result.ranked[0].tileCount, 2);
 });
 
+test("exchange-three recommendation returns three tiles from one suit", () => {
+  const hand = [
+    "m1", "m2", "m3", "m4", "m6", "m8",
+    "p1", "p2", "p3",
+    "s2", "s4", "s6", "s8", "s9"
+  ];
+  const choice = chooseExchangeTiles(hand, xuezhan);
+  assert.equal(choice.tiles.length, 3);
+  assert.equal(new Set(choice.tiles.map((tile) => tile[0])).size, 1);
+  assert.deepEqual(assertExchangeSelection(hand, choice.tiles, xuezhan), choice.tiles);
+});
+
+test("exchange-three moves all four selections in the chosen direction", () => {
+  const hands = [
+    ["m1", "m2", "m3"],
+    ["p1", "p2", "p3"],
+    ["s1", "s2", "s3"],
+    ["m7", "m8", "m9"]
+  ];
+  const result = exchangeHands(hands, hands, "clockwise", xuezhan);
+  assert.deepEqual(result.hands[0], ["p1", "p2", "p3"]);
+  assert.deepEqual(result.hands[1], ["s1", "s2", "s3"]);
+  assert.deepEqual(result.hands[2], ["m7", "m8", "m9"]);
+  assert.deepEqual(result.hands[3], ["m1", "m2", "m3"]);
+});
+
+test("exchange-three supports counterclockwise and opposite directions", () => {
+  const hands = [
+    ["m1", "m2", "m3"],
+    ["p1", "p2", "p3"],
+    ["s1", "s2", "s3"],
+    ["m7", "m8", "m9"]
+  ];
+  assert.deepEqual(exchangeHands(hands, hands, "counterclockwise", xuezhan).received[0], ["m7", "m8", "m9"]);
+  assert.deepEqual(exchangeHands(hands, hands, "across", xuezhan).received[0], ["s1", "s2", "s3"]);
+});
+
+test("exchange-three rejects mixed-suit selections", () => {
+  assert.throws(
+    () => assertExchangeSelection(
+      ["m1", "m2", "p1", "p2", "s1", "s2"],
+      ["m1", "p1", "s1"],
+      xuezhan
+    ),
+    /one suit/
+  );
+});
+
 test("hongzhong wildcard completes a missing tile", () => {
   const hand = [
     "m1", "m2", "z5",
@@ -153,7 +204,8 @@ test("scores pure seven pairs for xuezhan", () => {
   ];
   const score = scoreHand(hand, xuezhan, "s");
   assert.equal(score.isWinning, true);
-  assert.ok(score.patterns.some((pattern) => pattern.id === "qingQiDui"));
+  assert.ok(score.patterns.some((pattern) => pattern.id === "qingYiSe"));
+  assert.ok(score.patterns.some((pattern) => pattern.id === "qiDui"));
   assert.equal(score.cappedFan, 3);
 });
 

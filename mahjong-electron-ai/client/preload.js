@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   chooseLackSuit(payload) {
     return requestJson("/ai/lack-suit", payload);
   },
+  chooseExchangeTiles(payload) {
+    return requestJson("/ai/exchange", payload);
+  },
   recommendDiscard(payload) {
     return requestJson("/ai/discard", payload);
   }

@@ -134,6 +134,32 @@ async function captureWindowForVerification() {
     `);
     await delay(1500);
   }
+  if (process.env.MAHJONG_CAPTURE_EXCHANGE_AI === "1") {
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const panel = document.getElementById("exchangePanel");
+        const aiButton = document.getElementById("askAiButton");
+        if (panel === null || panel.hidden) {
+          throw new Error("exchangePanel is not active");
+        }
+        if (aiButton === null) {
+          throw new Error("askAiButton missing");
+        }
+        aiButton.click();
+      })();
+    `);
+    await delay(1000);
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const confirmButton = document.getElementById("confirmExchangeButton");
+        if (confirmButton === null || confirmButton.disabled) {
+          throw new Error("confirmExchangeButton is not ready");
+        }
+        confirmButton.click();
+      })();
+    `);
+    await delay(1500);
+  }
   if (typeof process.env.MAHJONG_CAPTURE_LACK_SUIT === "string" && process.env.MAHJONG_CAPTURE_LACK_SUIT.length > 0) {
     if (!["m", "p", "s"].includes(process.env.MAHJONG_CAPTURE_LACK_SUIT)) {
       throw new Error("MAHJONG_CAPTURE_LACK_SUIT must be m, p, or s");

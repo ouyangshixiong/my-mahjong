@@ -13,22 +13,31 @@ function tileCounts(tileIds) {
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 4,
+    version: 5,
     updatedAt: "2026-07-10T00:00:00+08:00",
     name: "四川麻将血战",
-    description: "三门 108 张，先定缺并优先打完缺门牌；不可吃，可一炮多响，胡牌后其余玩家继续血战。",
+    description: "三门 108 张，发牌后先换三张再定缺；不可吃，可碰杠、一炮多响，胡牌后其余玩家继续血战。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
     gameplay: Object.freeze({
       initialHandSize: 13,
       dealerDraws: 14,
       continueAfterWin: true,
       maxWinners: 3,
+      requiresExchangeThree: true,
+      exchangeTileCount: 3,
+      exchangeSameSuit: true,
       requiresDingque: true,
       mustDiscardDingqueFirst: true,
       allowChi: false,
+      allowPeng: true,
+      allowGang: true,
+      allowRobGang: true,
       allowDiscardWin: true,
       allowMultipleWinnersOnDiscard: true,
       forceWinOnLastFourTiles: true,
+      settleGangImmediately: true,
+      refundGangOnDrawNotReady: true,
+      gangPaoTransferMode: "refund",
       settleFlowerPigOnDraw: true,
       settleReadyHandsOnDraw: true,
       wildcardTile: null,
@@ -36,15 +45,15 @@ const RULESETS = Object.freeze([
       redCenterEnabled: false
     }),
     scoring: Object.freeze({
-      aggregation: "highest",
+      aggregation: "sum",
       baseFan: 0,
       maxFan: 3,
+      selfDrawAddsBase: true,
       patterns: Object.freeze([
         Object.freeze({ id: "baseHu", name: "平胡", fan: 0, type: "base" }),
         Object.freeze({ id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" }),
         Object.freeze({ id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }),
-        Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" }),
-        Object.freeze({ id: "qingQiDui", name: "清七对", fan: 3, type: "pureSevenPairs" })
+        Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" })
       ])
     })
   }),
@@ -63,12 +72,21 @@ const RULESETS = Object.freeze([
       dealerDraws: 14,
       continueAfterWin: false,
       maxWinners: 1,
+      requiresExchangeThree: false,
+      exchangeTileCount: 0,
+      exchangeSameSuit: false,
       requiresDingque: false,
       mustDiscardDingqueFirst: false,
       allowChi: false,
+      allowPeng: false,
+      allowGang: false,
+      allowRobGang: false,
       allowDiscardWin: true,
       allowMultipleWinnersOnDiscard: false,
       forceWinOnLastFourTiles: false,
+      settleGangImmediately: false,
+      refundGangOnDrawNotReady: false,
+      gangPaoTransferMode: "none",
       settleFlowerPigOnDraw: false,
       settleReadyHandsOnDraw: false,
       wildcardTile: "z5",
@@ -79,6 +97,7 @@ const RULESETS = Object.freeze([
       aggregation: "sum",
       baseFan: 1,
       maxFan: 24,
+      selfDrawAddsBase: false,
       patterns: Object.freeze([
         Object.freeze({ id: "baseHu", name: "基础胡", fan: 1, type: "base" }),
         Object.freeze({ id: "duiDuiHu", name: "碰碰胡", fan: 2, type: "allTriplets" }),
@@ -114,12 +133,21 @@ function assertRulesetShape(ruleset) {
     "dealerDraws",
     "continueAfterWin",
     "maxWinners",
+    "requiresExchangeThree",
+    "exchangeTileCount",
+    "exchangeSameSuit",
     "requiresDingque",
     "mustDiscardDingqueFirst",
     "allowChi",
+    "allowPeng",
+    "allowGang",
+    "allowRobGang",
     "allowDiscardWin",
     "allowMultipleWinnersOnDiscard",
     "forceWinOnLastFourTiles",
+    "settleGangImmediately",
+    "refundGangOnDrawNotReady",
+    "gangPaoTransferMode",
     "settleFlowerPigOnDraw",
     "settleReadyHandsOnDraw",
     "honorTilesEnabled",
@@ -129,11 +157,61 @@ function assertRulesetShape(ruleset) {
       throw new Error(`ruleset ${ruleset.id} gameplay missing field: ${field}`);
     }
   }
+  for (const field of [
+    "continueAfterWin",
+    "requiresExchangeThree",
+    "exchangeSameSuit",
+    "requiresDingque",
+    "mustDiscardDingqueFirst",
+    "allowChi",
+    "allowPeng",
+    "allowGang",
+    "allowRobGang",
+    "allowDiscardWin",
+    "allowMultipleWinnersOnDiscard",
+    "forceWinOnLastFourTiles",
+    "settleGangImmediately",
+    "refundGangOnDrawNotReady",
+    "settleFlowerPigOnDraw",
+    "settleReadyHandsOnDraw",
+    "honorTilesEnabled",
+    "redCenterEnabled"
+  ]) {
+    if (typeof ruleset.gameplay[field] !== "boolean") {
+      throw new Error(`ruleset ${ruleset.id} gameplay.${field} must be boolean`);
+    }
+  }
+  for (const field of ["initialHandSize", "dealerDraws", "maxWinners", "exchangeTileCount"]) {
+    if (!Number.isInteger(ruleset.gameplay[field]) || ruleset.gameplay[field] < 0) {
+      throw new Error(`ruleset ${ruleset.id} gameplay.${field} must be a non-negative integer`);
+    }
+  }
+  if (ruleset.gameplay.requiresExchangeThree && ruleset.gameplay.exchangeTileCount !== 3) {
+    throw new Error(`ruleset ${ruleset.id} exchange-three must exchange exactly 3 tiles`);
+  }
+  if (!ruleset.gameplay.requiresExchangeThree && ruleset.gameplay.exchangeTileCount !== 0) {
+    throw new Error(`ruleset ${ruleset.id} without exchange-three must use exchangeTileCount 0`);
+  }
+  if (ruleset.gameplay.allowRobGang && !ruleset.gameplay.allowGang) {
+    throw new Error(`ruleset ${ruleset.id} cannot allow rob-gang while gang is disabled`);
+  }
+  if (ruleset.gameplay.settleGangImmediately && !ruleset.gameplay.allowGang) {
+    throw new Error(`ruleset ${ruleset.id} cannot settle gang while gang is disabled`);
+  }
+  if (ruleset.gameplay.refundGangOnDrawNotReady && !ruleset.gameplay.settleGangImmediately) {
+    throw new Error(`ruleset ${ruleset.id} cannot refund gang without immediate gang settlement`);
+  }
+  if (!["none", "refund"].includes(ruleset.gameplay.gangPaoTransferMode)) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.gangPaoTransferMode must be none or refund`);
+  }
   if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, "wildcardTile")) {
     throw new Error(`ruleset ${ruleset.id} gameplay missing field: wildcardTile`);
   }
   if (!Array.isArray(ruleset.scoring.patterns)) {
     throw new Error(`ruleset ${ruleset.id} scoring.patterns must be an array`);
+  }
+  if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
+    throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);
   }
   if (ruleset.scoring.aggregation !== "sum" && ruleset.scoring.aggregation !== "highest") {
     throw new Error(`ruleset ${ruleset.id} scoring.aggregation must be sum or highest`);

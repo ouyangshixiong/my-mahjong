@@ -1,6 +1,6 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const { analyzeHand, chooseLackSuit, scoreHand, TILE_DEFS } = require("./mahjong");
+const { analyzeHand, chooseExchangeTiles, chooseLackSuit, scoreHand, TILE_DEFS } = require("./mahjong");
 const { recommendDiscard } = require("./ai");
 const { getRuleset, getRulesets } = require("./rulesets");
 
@@ -92,6 +92,13 @@ function createServer() {
         const payload = await readRequestBody(request);
         const ruleset = getRuleset(payload.rulesetId);
         sendJson(response, 200, chooseLackSuit(payload.hand, ruleset));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/exchange") {
+        const payload = await readRequestBody(request);
+        const ruleset = getRuleset(payload.rulesetId);
+        sendJson(response, 200, chooseExchangeTiles(payload.hand, ruleset));
         return;
       }
 
