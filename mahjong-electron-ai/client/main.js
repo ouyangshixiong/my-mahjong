@@ -1,18 +1,39 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("node:path");
-const { fork } = require("node:child_process");
 const http = require("node:http");
+const https = require("node:https");
+const { URL } = require("node:url");
 const fs = require("node:fs");
 
-const SERVICE_PORT = 5057;
-const SERVICE_URL = `http://127.0.0.1:${SERVICE_PORT}`;
+function getServiceUrl() {
+  const value = process.env.MAHJONG_SERVICE_URL;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error("MAHJONG_SERVICE_URL is required");
+  }
 
-let strategyServer = null;
+  const parsed = new URL(value);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("MAHJONG_SERVICE_URL must use http or https");
+  }
+  if (parsed.username.length > 0 || parsed.password.length > 0) {
+    throw new Error("MAHJONG_SERVICE_URL must not contain credentials");
+  }
+  if (parsed.search.length > 0 || parsed.hash.length > 0) {
+    throw new Error("MAHJONG_SERVICE_URL must not contain a query or fragment");
+  }
+
+  return value.replace(/\/+$/, "");
+}
+
+const SERVICE_URL = getServiceUrl();
+
 let mainWindow = null;
 
 function healthCheck(url) {
   return new Promise((resolve, reject) => {
-    const request = http.get(`${url}/health`, (response) => {
+    const endpoint = new URL(`${url}/health`);
+    const transport = endpoint.protocol === "https:" ? https : http;
+    const request = transport.get(endpoint, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
@@ -53,32 +74,6 @@ async function waitForStrategyService(url) {
     }
   }
   throw new Error(`Strategy service did not become healthy: ${lastError.message}`);
-}
-
-async function startStrategyServer() {
-  const serverEntry = path.join(__dirname, "..", "server", "server.js");
-  strategyServer = fork(serverEntry, [], {
-    env: {
-      ...process.env,
-      PORT: String(SERVICE_PORT),
-      ELECTRON_RUN_AS_NODE: "1"
-    },
-    stdio: ["ignore", "pipe", "pipe", "ipc"]
-  });
-
-  strategyServer.stdout.on("data", (chunk) => {
-    process.stdout.write(`[strategy] ${chunk}`);
-  });
-  strategyServer.stderr.on("data", (chunk) => {
-    process.stderr.write(`[strategy] ${chunk}`);
-  });
-  strategyServer.on("exit", (code, signal) => {
-    if (mainWindow !== null && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("strategy-service-exited", { code, signal });
-    }
-  });
-
-  await waitForStrategyService(SERVICE_URL);
 }
 
 function createWindow() {
@@ -139,6 +134,33 @@ async function captureWindowForVerification() {
     `);
     await delay(1500);
   }
+  if (typeof process.env.MAHJONG_CAPTURE_LACK_SUIT === "string" && process.env.MAHJONG_CAPTURE_LACK_SUIT.length > 0) {
+    if (!["m", "p", "s"].includes(process.env.MAHJONG_CAPTURE_LACK_SUIT)) {
+      throw new Error("MAHJONG_CAPTURE_LACK_SUIT must be m, p, or s");
+    }
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const button = document.querySelector(${JSON.stringify(`[data-lack-suit="${process.env.MAHJONG_CAPTURE_LACK_SUIT}"]`)});
+        if (button === null) {
+          throw new Error("dingque button missing");
+        }
+        button.click();
+      })();
+    `);
+    await delay(1500);
+  }
+  if (process.env.MAHJONG_CAPTURE_DISCARD_FIRST === "1") {
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const tile = document.querySelector("#selfHand .tile.interactive");
+        if (tile === null) {
+          throw new Error("no legal interactive discard found");
+        }
+        tile.click();
+      })();
+    `);
+    await delay(3500);
+  }
   const image = await mainWindow.webContents.capturePage();
   fs.writeFileSync(process.env.MAHJONG_CAPTURE_PATH, image.toPNG());
   process.stdout.write(`[electron] captured ${process.env.MAHJONG_CAPTURE_PATH}\n`);
@@ -147,25 +169,24 @@ async function captureWindowForVerification() {
   }
 }
 
-app.whenReady().then(async () => {
-  await startStrategyServer();
-  createWindow();
+app.whenReady()
+  .then(async () => {
+    await waitForStrategyService(SERVICE_URL);
+    createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  })
+  .catch((error) => {
+    process.stderr.write(`[electron] startup failed: ${error.message}\n`);
+    app.exit(1);
   });
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
-  }
-});
-
-app.on("before-quit", () => {
-  if (strategyServer !== null && !strategyServer.killed) {
-    strategyServer.kill();
   }
 });

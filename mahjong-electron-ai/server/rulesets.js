@@ -13,31 +13,38 @@ function tileCounts(tileIds) {
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 3,
-    updatedAt: "2026-07-08T19:20:00+08:00",
+    version: 4,
+    updatedAt: "2026-07-10T00:00:00+08:00",
     name: "四川麻将血战",
-    description: "三门 108 张，缺一门才可胡；胡牌后继续血战，直到三家胡牌或牌墙摸完。",
+    description: "三门 108 张，先定缺并优先打完缺门牌；不可吃，可一炮多响，胡牌后其余玩家继续血战。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
     gameplay: Object.freeze({
       initialHandSize: 13,
       dealerDraws: 14,
       continueAfterWin: true,
       maxWinners: 3,
-      mustLackOneSuit: true,
+      requiresDingque: true,
+      mustDiscardDingqueFirst: true,
+      allowChi: false,
+      allowDiscardWin: true,
+      allowMultipleWinnersOnDiscard: true,
+      forceWinOnLastFourTiles: true,
+      settleFlowerPigOnDraw: true,
+      settleReadyHandsOnDraw: true,
       wildcardTile: null,
       honorTilesEnabled: false,
       redCenterEnabled: false
     }),
     scoring: Object.freeze({
-      baseFan: 1,
-      maxFan: 32,
+      aggregation: "highest",
+      baseFan: 0,
+      maxFan: 3,
       patterns: Object.freeze([
-        Object.freeze({ id: "baseHu", name: "基础胡", fan: 1, type: "base" }),
-        Object.freeze({ id: "duiDuiHu", name: "碰碰胡", fan: 2, type: "allTriplets" }),
-        Object.freeze({ id: "qingYiSe", name: "清一色", fan: 4, type: "pureSuit" }),
-        Object.freeze({ id: "qiDui", name: "七对", fan: 4, type: "sevenPairs" }),
-        Object.freeze({ id: "qingQiDui", name: "清七对", fan: 16, type: "pureSevenPairs" }),
-        Object.freeze({ id: "queYiMen", name: "缺一门", fan: 1, type: "lacksOneSuit" })
+        Object.freeze({ id: "baseHu", name: "平胡", fan: 0, type: "base" }),
+        Object.freeze({ id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" }),
+        Object.freeze({ id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }),
+        Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" }),
+        Object.freeze({ id: "qingQiDui", name: "清七对", fan: 3, type: "pureSevenPairs" })
       ])
     })
   }),
@@ -56,12 +63,20 @@ const RULESETS = Object.freeze([
       dealerDraws: 14,
       continueAfterWin: false,
       maxWinners: 1,
-      mustLackOneSuit: false,
+      requiresDingque: false,
+      mustDiscardDingqueFirst: false,
+      allowChi: false,
+      allowDiscardWin: true,
+      allowMultipleWinnersOnDiscard: false,
+      forceWinOnLastFourTiles: false,
+      settleFlowerPigOnDraw: false,
+      settleReadyHandsOnDraw: false,
       wildcardTile: "z5",
       honorTilesEnabled: false,
       redCenterEnabled: true
     }),
     scoring: Object.freeze({
+      aggregation: "sum",
       baseFan: 1,
       maxFan: 24,
       patterns: Object.freeze([
@@ -94,7 +109,22 @@ function assertRulesetShape(ruleset) {
       throw new Error(`ruleset ${ruleset.id} tile ${tile} must have count 4`);
     }
   }
-  for (const field of ["initialHandSize", "dealerDraws", "continueAfterWin", "maxWinners", "mustLackOneSuit", "honorTilesEnabled", "redCenterEnabled"]) {
+  for (const field of [
+    "initialHandSize",
+    "dealerDraws",
+    "continueAfterWin",
+    "maxWinners",
+    "requiresDingque",
+    "mustDiscardDingqueFirst",
+    "allowChi",
+    "allowDiscardWin",
+    "allowMultipleWinnersOnDiscard",
+    "forceWinOnLastFourTiles",
+    "settleFlowerPigOnDraw",
+    "settleReadyHandsOnDraw",
+    "honorTilesEnabled",
+    "redCenterEnabled"
+  ]) {
     if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, field)) {
       throw new Error(`ruleset ${ruleset.id} gameplay missing field: ${field}`);
     }
@@ -104,6 +134,9 @@ function assertRulesetShape(ruleset) {
   }
   if (!Array.isArray(ruleset.scoring.patterns)) {
     throw new Error(`ruleset ${ruleset.id} scoring.patterns must be an array`);
+  }
+  if (ruleset.scoring.aggregation !== "sum" && ruleset.scoring.aggregation !== "highest") {
+    throw new Error(`ruleset ${ruleset.id} scoring.aggregation must be sum or highest`);
   }
 }
 

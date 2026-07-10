@@ -27,6 +27,18 @@ async function main() {
     const xuezhan = await fetchJson(`${baseUrl}/rulesets/sichuan-xuezhan`);
     assert.equal(xuezhan.ruleset.tileCounts.z5, undefined);
     assert.equal(Object.keys(xuezhan.ruleset.tileCounts).length, 27);
+    assert.equal(xuezhan.ruleset.gameplay.requiresDingque, true);
+    assert.equal(xuezhan.ruleset.gameplay.mustDiscardDingqueFirst, true);
+
+    const lackSuit = await postJson(`${baseUrl}/ai/lack-suit`, {
+      rulesetId: "sichuan-xuezhan",
+      hand: [
+        "m1", "m2",
+        "p1", "p2", "p3", "p4", "p5",
+        "s1", "s2", "s3", "s4", "s5", "s6"
+      ]
+    });
+    assert.equal(lackSuit.lackSuit, "m");
 
     const analysis = await postJson(`${baseUrl}/ai/analyze`, {
       rulesetId: "hongzhong",
@@ -38,7 +50,8 @@ async function main() {
         "p9", "p9",
         "m9"
       ],
-      visibleTiles: []
+      visibleTiles: [],
+      lackSuit: null
     });
     assert.equal(analysis.tileCount, 14);
     assert.equal(Array.isArray(analysis.readyDiscards), true);
@@ -53,7 +66,8 @@ async function main() {
         "p9", "p9",
         "m9"
       ],
-      visibleTiles: []
+      visibleTiles: [],
+      lackSuit: null
     });
     assert.equal(decision.action, "discard");
     assert.equal(typeof decision.reason, "string");
@@ -66,7 +80,8 @@ async function main() {
         "p2", "p3", "p4",
         "s7", "s8", "s9",
         "p9", "p9"
-      ]
+      ],
+      lackSuit: null
     });
     assert.equal(score.isWinning, true);
     assert.ok(score.patterns.some((pattern) => pattern.id === "hongZhong"));

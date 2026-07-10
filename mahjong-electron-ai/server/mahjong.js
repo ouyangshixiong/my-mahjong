@@ -38,6 +38,8 @@ const TILE_DEFS = Object.freeze([
 const TILE_IDS = Object.freeze(TILE_DEFS.map((tile) => tile.id));
 const TILE_BY_ID = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => [tile.id, tile])));
 const TILE_ORDER = Object.freeze(Object.fromEntries(TILE_IDS.map((tile, index) => [tile, index])));
+const SUITED_SUITS = Object.freeze(["m", "p", "s"]);
+const SUIT_LABELS = Object.freeze({ m: "万", p: "筒", s: "条" });
 
 function assertRuleset(ruleset) {
   if (ruleset === null || typeof ruleset !== "object") {
@@ -51,6 +53,32 @@ function assertRuleset(ruleset) {
   if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, "wildcardTile")) {
     throw new Error(`ruleset ${ruleset.id} missing gameplay.wildcardTile`);
   }
+  for (const field of ["requiresDingque", "mustDiscardDingqueFirst"]) {
+    if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, field)) {
+      throw new Error(`ruleset ${ruleset.id} missing gameplay.${field}`);
+    }
+  }
+}
+
+function assertLackSuit(lackSuit, ruleset) {
+  assertRuleset(ruleset);
+  if (ruleset.gameplay.requiresDingque) {
+    if (!SUITED_SUITS.includes(lackSuit)) {
+      throw new Error(`ruleset ${ruleset.id} requires lackSuit to be m, p, or s`);
+    }
+    return;
+  }
+  if (lackSuit !== null) {
+    throw new Error(`ruleset ${ruleset.id} requires lackSuit to be null`);
+  }
+}
+
+function suitLabel(suit) {
+  const label = SUIT_LABELS[suit];
+  if (label === undefined) {
+    throw new Error(`Unknown suited Mahjong suit: ${suit}`);
+  }
+  return label;
 }
 
 function allowedTileIds(ruleset) {
@@ -141,6 +169,32 @@ function suitedSuitsInHand(hand, ruleset) {
 
 function lacksOneSuit(hand, ruleset) {
   return suitedSuitsInHand(hand, ruleset).size <= 2;
+}
+
+function countSuitTiles(hand, suit, ruleset) {
+  if (!SUITED_SUITS.includes(suit)) {
+    throw new Error(`suit must be m, p, or s: ${suit}`);
+  }
+  const normalized = normalizeHand(hand, ruleset);
+  return normalized.filter((tile) => TILE_BY_ID[tile].suit === suit).length;
+}
+
+function hasDingqueTiles(hand, ruleset, lackSuit) {
+  assertLackSuit(lackSuit, ruleset);
+  if (!ruleset.gameplay.requiresDingque) {
+    return false;
+  }
+  return hand.some((tile) => TILE_BY_ID[tile].suit === lackSuit);
+}
+
+function legalDiscardTiles(hand, ruleset, lackSuit) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  const uniqueTiles = [...new Set(normalized)];
+  if (!ruleset.gameplay.mustDiscardDingqueFirst || !hasDingqueTiles(normalized, ruleset, lackSuit)) {
+    return uniqueTiles;
+  }
+  return uniqueTiles.filter((tile) => TILE_BY_ID[tile].suit === lackSuit);
 }
 
 function canFormSevenPairs(hand, ruleset) {
@@ -274,12 +328,13 @@ function isPureSuit(hand, ruleset) {
   return suits.size === 1;
 }
 
-function isWinningHand(hand, ruleset) {
+function isWinningHand(hand, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
+  assertLackSuit(lackSuit, ruleset);
   if (normalized.length % 3 !== 2) {
     return false;
   }
-  if (ruleset.gameplay.mustLackOneSuit && !lacksOneSuit(normalized, ruleset)) {
+  if (ruleset.gameplay.requiresDingque && hasDingqueTiles(normalized, ruleset, lackSuit)) {
     return false;
   }
   if (canFormSevenPairs(normalized, ruleset)) {
@@ -314,9 +369,10 @@ function availableTileCount(tile, hand, visibleTiles, ruleset) {
   return ruleset.tileCounts[tile] - counts[tile];
 }
 
-function winningTiles(hand, visibleTiles, ruleset) {
+function winningTiles(hand, visibleTiles, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
   const visible = normalizeHand(visibleTiles, ruleset);
+  assertLackSuit(lackSuit, ruleset);
   if (normalized.length % 3 !== 1) {
     throw new Error("winningTiles requires a 3n+1 tile hand");
   }
@@ -324,14 +380,14 @@ function winningTiles(hand, visibleTiles, ruleset) {
   const wins = [];
   for (const tile of allowedTileIds(ruleset)) {
     const remaining = availableTileCount(tile, normalized, visible, ruleset);
-    if (remaining > 0 && isWinningHand([...normalized, tile], ruleset)) {
+    if (remaining > 0 && isWinningHand([...normalized, tile], ruleset, lackSuit)) {
       wins.push({ tile, label: tileLabel(tile), remaining });
     }
   }
   return wins;
 }
 
-function shapeScore(hand, ruleset) {
+function structuralShapeScore(hand, ruleset) {
   const normalized = normalizeHand(hand, ruleset);
   const counts = countTiles(normalized, ruleset);
   let score = 0;
@@ -374,17 +430,66 @@ function shapeScore(hand, ruleset) {
   return score;
 }
 
-function readyAfterDiscards(hand, visibleTiles, ruleset) {
+function shapeScore(hand, ruleset, lackSuit) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  const structure = structuralShapeScore(normalized, ruleset);
+  if (!ruleset.gameplay.requiresDingque) {
+    return structure;
+  }
+  return structure - countSuitTiles(normalized, lackSuit, ruleset) * 120;
+}
+
+function chooseLackSuit(hand, ruleset) {
+  const normalized = normalizeHand(hand, ruleset);
+  if (!ruleset.gameplay.requiresDingque) {
+    throw new Error(`ruleset ${ruleset.id} does not use dingque`);
+  }
+  if (normalized.length !== ruleset.gameplay.initialHandSize && normalized.length !== ruleset.gameplay.dealerDraws) {
+    throw new Error("dingque recommendation requires an initial 13-tile or dealer 14-tile hand");
+  }
+
+  const ranked = SUITED_SUITS.map((suit) => {
+    const tileCount = countSuitTiles(normalized, suit, ruleset);
+    const remainingHand = normalized.filter((tile) => TILE_BY_ID[tile].suit !== suit);
+    const remainingShapeScore = structuralShapeScore(remainingHand, ruleset);
+    return {
+      suit,
+      label: suitLabel(suit),
+      tileCount,
+      remainingShapeScore
+    };
+  }).sort((left, right) => {
+    if (left.tileCount !== right.tileCount) {
+      return left.tileCount - right.tileCount;
+    }
+    if (right.remainingShapeScore !== left.remainingShapeScore) {
+      return right.remainingShapeScore - left.remainingShapeScore;
+    }
+    return SUITED_SUITS.indexOf(left.suit) - SUITED_SUITS.indexOf(right.suit);
+  });
+
+  const best = ranked[0];
+  return {
+    lackSuit: best.suit,
+    lackSuitLabel: best.label,
+    reason: `建议定缺${best.label}：该花色 ${best.tileCount} 张，保留另外两门的结构分 ${best.remainingShapeScore}。`,
+    ranked
+  };
+}
+
+function readyAfterDiscards(hand, visibleTiles, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
   const visible = normalizeHand(visibleTiles, ruleset);
+  assertLackSuit(lackSuit, ruleset);
   if (normalized.length % 3 !== 2) {
     throw new Error("readyAfterDiscards requires a 3n+2 tile hand");
   }
 
   const options = [];
-  for (const tile of [...new Set(normalized)]) {
+  for (const tile of legalDiscardTiles(normalized, ruleset, lackSuit)) {
     const afterDiscard = removeOneTile(normalized, tile, ruleset);
-    const waits = winningTiles(afterDiscard, visible, ruleset);
+    const waits = winningTiles(afterDiscard, visible, ruleset, lackSuit);
     options.push({
       discard: tile,
       discardLabel: tileLabel(tile),
@@ -403,26 +508,28 @@ function readyAfterDiscards(hand, visibleTiles, ruleset) {
     });
 }
 
-function estimateShanten(hand, visibleTiles, ruleset) {
+function estimateShanten(hand, visibleTiles, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
-  if (normalized.length % 3 === 2 && isWinningHand(normalized, ruleset)) {
+  assertLackSuit(lackSuit, ruleset);
+  if (normalized.length % 3 === 2 && isWinningHand(normalized, ruleset, lackSuit)) {
     return -1;
   }
-  if (normalized.length % 3 === 1 && winningTiles(normalized, visibleTiles, ruleset).length > 0) {
+  if (normalized.length % 3 === 1 && winningTiles(normalized, visibleTiles, ruleset, lackSuit).length > 0) {
     return 0;
   }
-  if (normalized.length % 3 === 2 && readyAfterDiscards(normalized, visibleTiles, ruleset).length > 0) {
+  if (normalized.length % 3 === 2 && readyAfterDiscards(normalized, visibleTiles, ruleset, lackSuit).length > 0) {
     return 0;
   }
 
-  const score = shapeScore(normalized, ruleset);
+  const score = shapeScore(normalized, ruleset, lackSuit);
   const estimate = 6 - Math.floor(score / 42);
   return Math.max(1, Math.min(6, estimate));
 }
 
-function scoreHand(hand, ruleset) {
+function scoreHand(hand, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
-  const isWinning = isWinningHand(normalized, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  const isWinning = isWinningHand(normalized, ruleset, lackSuit);
   if (!isWinning) {
     return {
       isWinning: false,
@@ -445,12 +552,15 @@ function scoreHand(hand, ruleset) {
     }
   }
 
-  const totalFan = matched.reduce((total, pattern) => total + pattern.fan, 0);
+  const appliedPatterns = ruleset.scoring.aggregation === "highest"
+    ? matched.filter((pattern) => pattern.fan === Math.max(...matched.map((item) => item.fan))).slice(0, 1)
+    : matched;
+  const totalFan = appliedPatterns.reduce((total, pattern) => total + pattern.fan, 0);
   return {
     isWinning: true,
     totalFan,
     cappedFan: Math.min(totalFan, ruleset.scoring.maxFan),
-    patterns: matched
+    patterns: appliedPatterns
   };
 }
 
@@ -492,6 +602,11 @@ function analyzeHand(payload, ruleset) {
   if (!Array.isArray(payload.visibleTiles)) {
     throw new Error("visibleTiles must be an array");
   }
+  if (!Object.prototype.hasOwnProperty.call(payload, "lackSuit")) {
+    throw new Error("lackSuit is required");
+  }
+  const lackSuit = payload.lackSuit;
+  assertLackSuit(lackSuit, ruleset);
   const visibleTiles = normalizeHand(payload.visibleTiles, ruleset);
   if (hand.length < 1 || hand.length > 14) {
     throw new Error("hand length must be between 1 and 14");
@@ -502,19 +617,23 @@ function analyzeHand(payload, ruleset) {
     hand,
     labels: hand.map(tileLabel),
     tileCount: hand.length,
-    shapeScore: shapeScore(hand, ruleset),
-    estimatedShanten: estimateShanten(hand, visibleTiles, ruleset),
-    isWinning: hand.length % 3 === 2 ? isWinningHand(hand, ruleset) : false,
+    lackSuit,
+    lackSuitLabel: lackSuit === null ? null : suitLabel(lackSuit),
+    lackSuitRemaining: lackSuit === null ? 0 : countSuitTiles(hand, lackSuit, ruleset),
+    legalDiscards: hand.length % 3 === 2 ? legalDiscardTiles(hand, ruleset, lackSuit) : [],
+    shapeScore: shapeScore(hand, ruleset, lackSuit),
+    estimatedShanten: estimateShanten(hand, visibleTiles, ruleset, lackSuit),
+    isWinning: hand.length % 3 === 2 ? isWinningHand(hand, ruleset, lackSuit) : false,
     waits: [],
     readyDiscards: [],
-    score: scoreHand(hand, ruleset)
+    score: scoreHand(hand, ruleset, lackSuit)
   };
 
   if (hand.length % 3 === 1) {
-    analysis.waits = winningTiles(hand, visibleTiles, ruleset);
+    analysis.waits = winningTiles(hand, visibleTiles, ruleset, lackSuit);
   }
   if (hand.length % 3 === 2) {
-    analysis.readyDiscards = readyAfterDiscards(hand, visibleTiles, ruleset);
+    analysis.readyDiscards = readyAfterDiscards(hand, visibleTiles, ruleset, lackSuit);
   }
   return analysis;
 }
@@ -524,12 +643,19 @@ module.exports = {
   TILE_IDS,
   TILE_BY_ID,
   TILE_ORDER,
+  SUITED_SUITS,
   assertTile,
+  assertLackSuit,
   normalizeHand,
   sortTiles,
   tileLabel,
+  suitLabel,
   countTiles,
+  countSuitTiles,
   removeOneTile,
+  hasDingqueTiles,
+  legalDiscardTiles,
+  chooseLackSuit,
   isWinningHand,
   winningTiles,
   readyAfterDiscards,

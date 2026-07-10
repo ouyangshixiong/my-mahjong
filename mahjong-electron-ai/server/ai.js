@@ -1,9 +1,13 @@
 const {
   TILE_ORDER,
   analyzeHand,
+  assertLackSuit,
+  hasDingqueTiles,
+  legalDiscardTiles,
   normalizeHand,
   removeOneTile,
   shapeScore,
+  suitLabel,
   tileLabel,
   winningTiles,
   isWinningHand
@@ -23,19 +27,24 @@ function assertStrategyPayload(payload) {
   if (typeof payload.rulesetId !== "string" || payload.rulesetId.length === 0) {
     throw new Error("rulesetId must be a non-empty string");
   }
+  if (!Object.prototype.hasOwnProperty.call(payload, "lackSuit")) {
+    throw new Error("lackSuit is required");
+  }
 }
 
 function recommendDiscard(payload) {
   assertStrategyPayload(payload);
   const ruleset = getRuleset(payload.rulesetId);
+  const lackSuit = payload.lackSuit;
+  assertLackSuit(lackSuit, ruleset);
   const hand = normalizeHand(payload.hand, ruleset);
   const visibleTiles = normalizeHand(payload.visibleTiles, ruleset);
   if (hand.length % 3 !== 2) {
     throw new Error("discard recommendation requires a 3n+2 tile hand");
   }
 
-  const analysis = analyzeHand({ hand, visibleTiles }, ruleset);
-  if (isWinningHand(hand, ruleset)) {
+  const analysis = analyzeHand({ hand, visibleTiles, lackSuit }, ruleset);
+  if (isWinningHand(hand, ruleset, lackSuit)) {
     return {
       action: "hu",
       discard: null,
@@ -46,18 +55,18 @@ function recommendDiscard(payload) {
     };
   }
 
-  const ranked = [...new Set(hand)].map((tile) => {
+  const ranked = legalDiscardTiles(hand, ruleset, lackSuit).map((tile) => {
     const afterDiscard = removeOneTile(hand, tile, ruleset);
-    const waits = winningTiles(afterDiscard, visibleTiles, ruleset);
+    const waits = winningTiles(afterDiscard, visibleTiles, ruleset, lackSuit);
     const liveWaits = waits.reduce((total, wait) => total + wait.remaining, 0);
-    const score = shapeScore(afterDiscard, ruleset) + waits.length * 80 + liveWaits * 35;
+    const score = shapeScore(afterDiscard, ruleset, lackSuit) + waits.length * 80 + liveWaits * 35;
     return {
       discard: tile,
       discardLabel: tileLabel(tile),
       score,
       waits,
       liveWaits,
-      reason: buildReason(tile, waits, liveWaits, afterDiscard, ruleset)
+      reason: buildReason(tile, waits, liveWaits, afterDiscard, ruleset, lackSuit)
     };
   }).sort((left, right) => {
     if (right.score !== left.score) {
@@ -81,12 +90,18 @@ function recommendDiscard(payload) {
   };
 }
 
-function buildReason(tile, waits, liveWaits, afterDiscard, ruleset) {
+function buildReason(tile, waits, liveWaits, afterDiscard, ruleset, lackSuit) {
+  if (ruleset.gameplay.requiresDingque && hasDingqueTiles(afterDiscard, ruleset, lackSuit)) {
+    return `已定缺${suitLabel(lackSuit)}，必须继续优先打缺门牌。`;
+  }
+  if (ruleset.gameplay.requiresDingque && tile.startsWith(lackSuit) && !hasDingqueTiles(afterDiscard, ruleset, lackSuit)) {
+    return `打${tileLabel(tile)}后清空定缺${suitLabel(lackSuit)}，随后可按牌型自由出牌。`;
+  }
   const waitLabels = waits.map((wait) => `${wait.label}x${wait.remaining}`);
   if (waitLabels.length > 0) {
     return `打${tileLabel(tile)}后进入听牌，活张 ${liveWaits}，听 ${waitLabels.join("、")}。`;
   }
-  const score = shapeScore(afterDiscard, ruleset);
+  const score = shapeScore(afterDiscard, ruleset, lackSuit);
   return `打${tileLabel(tile)}后保留搭子结构，形状分 ${score}。`;
 }
 

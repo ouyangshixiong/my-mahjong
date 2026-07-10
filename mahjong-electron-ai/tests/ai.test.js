@@ -12,6 +12,7 @@ test("recommends hu when the hand is already complete", () => {
       "z5", "z5"
     ],
     visibleTiles: [],
+    lackSuit: null,
     rulesetId: "hongzhong"
   });
   assert.equal(result.action, "hu");
@@ -29,6 +30,7 @@ test("ranks legal discards for an incomplete 14-tile hand", () => {
       "m9"
     ],
     visibleTiles: [],
+    lackSuit: null,
     rulesetId: "hongzhong"
   });
 
@@ -36,4 +38,22 @@ test("ranks legal discards for an incomplete 14-tile hand", () => {
   assert.ok(result.analysis.hand.includes(result.discard));
   assert.ok(result.ranked.length > 0);
   assert.equal(result.ranked[0].discard, result.discard);
+});
+
+test("sichuan recommendation only ranks declared-suit tiles until dingque is cleared", () => {
+  const result = recommendDiscard({
+    hand: [
+      "m1", "m2", "m3", "m4", "m6", "m8", "m8",
+      "p4", "p5", "p5", "p8",
+      "s6", "s7", "s8"
+    ],
+    visibleTiles: [],
+    lackSuit: "m",
+    rulesetId: "sichuan-xuezhan"
+  });
+
+  assert.equal(result.action, "discard");
+  assert.equal(result.discard.startsWith("m"), true);
+  assert.equal(result.ranked.every((item) => item.discard.startsWith("m")), true);
+  assert.match(result.reason, /定缺万/);
 });

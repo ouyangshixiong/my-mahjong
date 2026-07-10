@@ -1,6 +1,6 @@
 const http = require("node:http");
 const { URL } = require("node:url");
-const { analyzeHand, scoreHand, TILE_DEFS } = require("./mahjong");
+const { analyzeHand, chooseLackSuit, scoreHand, TILE_DEFS } = require("./mahjong");
 const { recommendDiscard } = require("./ai");
 const { getRuleset, getRulesets } = require("./rulesets");
 
@@ -81,7 +81,17 @@ function createServer() {
       if (request.method === "POST" && url.pathname === "/ai/score") {
         const payload = await readRequestBody(request);
         const ruleset = getRuleset(payload.rulesetId);
-        sendJson(response, 200, scoreHand(payload.hand, ruleset));
+        if (!Object.prototype.hasOwnProperty.call(payload, "lackSuit")) {
+          throw new Error("lackSuit is required");
+        }
+        sendJson(response, 200, scoreHand(payload.hand, ruleset, payload.lackSuit));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/lack-suit") {
+        const payload = await readRequestBody(request);
+        const ruleset = getRuleset(payload.rulesetId);
+        sendJson(response, 200, chooseLackSuit(payload.hand, ruleset));
         return;
       }
 
@@ -99,13 +109,17 @@ function createServer() {
 }
 
 if (require.main === module) {
+  const host = process.env.HOST;
+  if (typeof host !== "string" || host.length === 0) {
+    throw new Error("HOST is required");
+  }
   const port = Number.parseInt(process.env.PORT, 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error("PORT must be an integer between 1 and 65535");
   }
   const server = createServer();
-  server.listen(port, "127.0.0.1", () => {
-    process.stdout.write(`mahjong-strategy listening on http://127.0.0.1:${port}\n`);
+  server.listen(port, host, () => {
+    process.stdout.write(`mahjong-strategy listening on ${host}:${port}\n`);
   });
 }
 

@@ -1,4 +1,5 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge } = require("electron");
+const { URL } = require("node:url");
 
 function getServiceUrl() {
   const arg = process.argv.find((item) => item.startsWith("--ai-service-url="));
@@ -6,8 +7,9 @@ function getServiceUrl() {
     throw new Error("Missing --ai-service-url argument");
   }
   const value = arg.slice("--ai-service-url=".length);
-  if (!value.startsWith("http://127.0.0.1:")) {
-    throw new Error(`Unexpected AI service URL: ${value}`);
+  const parsed = new URL(value);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("AI service URL must use http or https");
   }
   return value;
 }
@@ -56,10 +58,10 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   score(payload) {
     return requestJson("/ai/score", payload);
   },
+  chooseLackSuit(payload) {
+    return requestJson("/ai/lack-suit", payload);
+  },
   recommendDiscard(payload) {
     return requestJson("/ai/discard", payload);
-  },
-  onServiceExit(callback) {
-    ipcRenderer.on("strategy-service-exited", (_event, details) => callback(details));
   }
 });

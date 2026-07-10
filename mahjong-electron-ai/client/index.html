@@ -22,23 +22,33 @@
           <button id="newRoundButton" type="button">新牌局</button>
           <button id="askAiButton" type="button">AI 建议</button>
           <button id="huButton" type="button">胡牌</button>
+          <button id="passButton" type="button">过</button>
         </div>
       </section>
 
       <section class="table">
         <div class="opponent opponent-top">
-          <div class="seat-name">对家</div>
+          <div class="seat-name">对家 <span id="player2LackSuit" class="lack-suit-badge"></span></div>
           <div id="player2Hand" class="closed-hand"></div>
           <div id="player2River" class="river"></div>
         </div>
 
         <div class="opponent opponent-left">
-          <div class="seat-name">上家</div>
+          <div class="seat-name">上家 <span id="player1LackSuit" class="lack-suit-badge"></span></div>
           <div id="player1Hand" class="closed-hand vertical"></div>
           <div id="player1River" class="river vertical-river"></div>
         </div>
 
         <div class="center-panel">
+          <div id="lackSuitPanel" class="lack-suit-panel" hidden>
+            <strong>请选择定缺</strong>
+            <span>定缺后，手里还有该花色时只能先打该花色。</span>
+            <div class="lack-suit-actions">
+              <button type="button" data-lack-suit="m">缺万</button>
+              <button type="button" data-lack-suit="p">缺筒</button>
+              <button type="button" data-lack-suit="s">缺条</button>
+            </div>
+          </div>
           <div class="wall-card">
             <span id="wallCount">0</span>
             <small>墙牌</small>
@@ -47,12 +57,13 @@
         </div>
 
         <div class="opponent opponent-right">
-          <div class="seat-name">下家</div>
+          <div class="seat-name">下家 <span id="player3LackSuit" class="lack-suit-badge"></span></div>
           <div id="player3Hand" class="closed-hand vertical"></div>
           <div id="player3River" class="river vertical-river"></div>
         </div>
 
         <div class="self-area">
+          <div class="self-rule-status">你的定缺：<span id="selfLackSuit">未定</span></div>
           <div id="selfRiver" class="river self-river"></div>
           <div id="selfHand" class="hand"></div>
         </div>
