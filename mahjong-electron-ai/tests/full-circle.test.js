@@ -51,12 +51,19 @@ function playRound({ ruleset, seed, dealerIndex }) {
     }
   }
 
-  const exchangeSelections = state.hands.map((hand) => chooseExchangeTiles(hand, ruleset).tiles);
-  state.hands = exchangeHands(state.hands, exchangeSelections, "clockwise", ruleset).hands;
-
   for (let playerIndex = 0; playerIndex < PLAYER_COUNT; playerIndex += 1) {
     state.lackSuits[playerIndex] = chooseLackSuit(state.hands[playerIndex], ruleset).lackSuit;
   }
+  const exchangeSelections = state.hands.map((hand, playerIndex) => (
+    chooseExchangeTiles(hand, ruleset, state.lackSuits[playerIndex]).tiles
+  ));
+  state.hands = exchangeHands(
+    state.hands,
+    exchangeSelections,
+    "clockwise",
+    ruleset,
+    state.lackSuits
+  ).hands;
 
   assertTileConservation(state, ruleset);
 

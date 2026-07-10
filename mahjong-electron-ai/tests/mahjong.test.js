@@ -136,10 +136,10 @@ test("exchange-three recommendation returns three tiles from one suit", () => {
     "p1", "p2", "p3",
     "s2", "s4", "s6", "s8", "s9"
   ];
-  const choice = chooseExchangeTiles(hand, xuezhan);
+  const choice = chooseExchangeTiles(hand, xuezhan, "p");
   assert.equal(choice.tiles.length, 3);
   assert.equal(new Set(choice.tiles.map((tile) => tile[0])).size, 1);
-  assert.deepEqual(assertExchangeSelection(hand, choice.tiles, xuezhan), choice.tiles);
+  assert.deepEqual(assertExchangeSelection(hand, choice.tiles, xuezhan, "p"), choice.tiles);
 });
 
 test("exchange-three moves all four selections in the chosen direction", () => {
@@ -149,7 +149,7 @@ test("exchange-three moves all four selections in the chosen direction", () => {
     ["s1", "s2", "s3"],
     ["m7", "m8", "m9"]
   ];
-  const result = exchangeHands(hands, hands, "clockwise", xuezhan);
+  const result = exchangeHands(hands, hands, "clockwise", xuezhan, ["m", "p", "s", "m"]);
   assert.deepEqual(result.hands[0], ["p1", "p2", "p3"]);
   assert.deepEqual(result.hands[1], ["s1", "s2", "s3"]);
   assert.deepEqual(result.hands[2], ["m7", "m8", "m9"]);
@@ -163,8 +163,9 @@ test("exchange-three supports counterclockwise and opposite directions", () => {
     ["s1", "s2", "s3"],
     ["m7", "m8", "m9"]
   ];
-  assert.deepEqual(exchangeHands(hands, hands, "counterclockwise", xuezhan).received[0], ["m7", "m8", "m9"]);
-  assert.deepEqual(exchangeHands(hands, hands, "across", xuezhan).received[0], ["s1", "s2", "s3"]);
+  const lackSuits = ["m", "p", "s", "m"];
+  assert.deepEqual(exchangeHands(hands, hands, "counterclockwise", xuezhan, lackSuits).received[0], ["m7", "m8", "m9"]);
+  assert.deepEqual(exchangeHands(hands, hands, "across", xuezhan, lackSuits).received[0], ["s1", "s2", "s3"]);
 });
 
 test("exchange-three rejects mixed-suit selections", () => {
@@ -172,9 +173,73 @@ test("exchange-three rejects mixed-suit selections", () => {
     () => assertExchangeSelection(
       ["m1", "m2", "p1", "p2", "s1", "s2"],
       ["m1", "p1", "s1"],
-      xuezhan
+      xuezhan,
+      "s"
     ),
-    /one suit/
+    /declared shortage suit/
+  );
+});
+
+test("exchange-three allows other suits to fill a suit with fewer than three tiles", () => {
+  const hand = [
+    "m4", "m5", "m5", "m6",
+    "p1", "p1", "p1", "p2", "p3", "p5", "p6", "p7",
+    "s5", "s8"
+  ];
+  assert.deepEqual(
+    assertExchangeSelection(hand, ["m4", "s5", "s8"], xuezhan, "s"),
+    ["m4", "s5", "s8"]
+  );
+});
+
+test("exchange-three requires selecting every tile from the shortage suit before filling", () => {
+  const hand = [
+    "m4", "m5", "m5", "m6",
+    "p1", "p1", "p1", "p2", "p3", "p5", "p6", "p7",
+    "s5", "s8"
+  ];
+  assert.throws(
+    () => assertExchangeSelection(hand, ["m4", "p1", "s5"], xuezhan, "s"),
+    /every tile/
+  );
+});
+
+test("exchange-three recommendation fills the screenshot shortage hand", () => {
+  const hand = [
+    "m4", "m5", "m5", "m6",
+    "p1", "p1", "p1", "p2", "p3", "p5", "p6", "p7",
+    "s5", "s8"
+  ];
+  const choice = chooseExchangeTiles(hand, xuezhan, "s");
+  assert.equal(choice.suit, "s");
+  assert.equal(choice.tiles.length, 3);
+  assert.ok(choice.tiles.includes("s5"));
+  assert.ok(choice.tiles.includes("s8"));
+  assert.equal(choice.usesMixedFill, true);
+  assert.deepEqual(assertExchangeSelection(hand, choice.tiles, xuezhan, "s"), choice.tiles);
+});
+
+test("exchange-three allows any three fillers when the declared lack suit is absent", () => {
+  const hand = [
+    "m1", "m2", "m3", "m4", "m5", "m6", "m7",
+    "p1", "p2", "p3", "p4", "p5", "p6", "p7"
+  ];
+  const choice = chooseExchangeTiles(hand, xuezhan, "s");
+  assert.equal(choice.suit, "s");
+  assert.equal(choice.usesMixedFill, true);
+  assert.equal(choice.tiles.length, 3);
+  assert.deepEqual(assertExchangeSelection(hand, choice.tiles, xuezhan, "s"), choice.tiles);
+});
+
+test("exchange-three rejects another suit when the declared lack suit has three tiles", () => {
+  const hand = [
+    "m1", "m2", "m3", "m4", "m5",
+    "p1", "p2", "p3", "p4", "p5", "p6",
+    "s5", "s7", "s8"
+  ];
+  assert.throws(
+    () => assertExchangeSelection(hand, ["m1", "m2", "m3"], xuezhan, "s"),
+    /declared lack suit/
   );
 });
 

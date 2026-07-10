@@ -97,8 +97,11 @@ function createServer() {
 
       if (request.method === "POST" && url.pathname === "/ai/exchange") {
         const payload = await readRequestBody(request);
+        if (!Object.prototype.hasOwnProperty.call(payload, "lackSuit")) {
+          throw new Error("lackSuit is required");
+        }
         const ruleset = getRuleset(payload.rulesetId);
-        sendJson(response, 200, chooseExchangeTiles(payload.hand, ruleset));
+        sendJson(response, 200, chooseExchangeTiles(payload.hand, ruleset, payload.lackSuit));
         return;
       }
 

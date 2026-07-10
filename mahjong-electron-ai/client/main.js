@@ -134,6 +134,21 @@ async function captureWindowForVerification() {
     `);
     await delay(1500);
   }
+  if (typeof process.env.MAHJONG_CAPTURE_LACK_SUIT === "string" && process.env.MAHJONG_CAPTURE_LACK_SUIT.length > 0) {
+    if (!["m", "p", "s"].includes(process.env.MAHJONG_CAPTURE_LACK_SUIT)) {
+      throw new Error("MAHJONG_CAPTURE_LACK_SUIT must be m, p, or s");
+    }
+    await mainWindow.webContents.executeJavaScript(`
+      (() => {
+        const button = document.querySelector(${JSON.stringify(`[data-lack-suit="${process.env.MAHJONG_CAPTURE_LACK_SUIT}"]`)});
+        if (button === null) {
+          throw new Error("dingque button missing");
+        }
+        button.click();
+      })();
+    `);
+    await delay(1500);
+  }
   if (process.env.MAHJONG_CAPTURE_EXCHANGE_AI === "1") {
     await mainWindow.webContents.executeJavaScript(`
       (() => {
@@ -156,21 +171,6 @@ async function captureWindowForVerification() {
           throw new Error("confirmExchangeButton is not ready");
         }
         confirmButton.click();
-      })();
-    `);
-    await delay(1500);
-  }
-  if (typeof process.env.MAHJONG_CAPTURE_LACK_SUIT === "string" && process.env.MAHJONG_CAPTURE_LACK_SUIT.length > 0) {
-    if (!["m", "p", "s"].includes(process.env.MAHJONG_CAPTURE_LACK_SUIT)) {
-      throw new Error("MAHJONG_CAPTURE_LACK_SUIT must be m, p, or s");
-    }
-    await mainWindow.webContents.executeJavaScript(`
-      (() => {
-        const button = document.querySelector(${JSON.stringify(`[data-lack-suit="${process.env.MAHJONG_CAPTURE_LACK_SUIT}"]`)});
-        if (button === null) {
-          throw new Error("dingque button missing");
-        }
-        button.click();
       })();
     `);
     await delay(1500);

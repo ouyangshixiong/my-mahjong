@@ -54,7 +54,16 @@ function assertRuleset(ruleset) {
   if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, "wildcardTile")) {
     throw new Error(`ruleset ${ruleset.id} missing gameplay.wildcardTile`);
   }
-  for (const field of ["requiresDingque", "mustDiscardDingqueFirst"]) {
+  for (const field of [
+    "requiresDingque",
+    "mustDiscardDingqueFirst",
+    "requiresExchangeThree",
+    "dingqueBeforeExchange",
+    "exchangeUsesDingqueSuit",
+    "exchangeTileCount",
+    "exchangeSameSuit",
+    "exchangeAllowMixedFillWhenInsufficient"
+  ]) {
     if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, field)) {
       throw new Error(`ruleset ${ruleset.id} missing gameplay.${field}`);
     }
@@ -226,7 +235,33 @@ function removeTiles(hand, tiles, ruleset) {
   return sortTiles(remaining);
 }
 
-function assertExchangeSelection(hand, selection, ruleset) {
+function exchangeShortageSuit(hand, selection, ruleset) {
+  for (const suit of SUITED_SUITS) {
+    const handSuitCount = hand.filter((tile) => TILE_BY_ID[tile].suit === suit).length;
+    const selectedSuitCount = selection.filter((tile) => TILE_BY_ID[tile].suit === suit).length;
+    if (
+      handSuitCount > 0
+      && handSuitCount < ruleset.gameplay.exchangeTileCount
+      && selectedSuitCount === handSuitCount
+    ) {
+      return suit;
+    }
+  }
+  return null;
+}
+
+function exchangeTargetSuit(ruleset, lackSuit) {
+  if (ruleset.gameplay.exchangeUsesDingqueSuit) {
+    assertLackSuit(lackSuit, ruleset);
+    return lackSuit;
+  }
+  if (lackSuit !== null) {
+    throw new Error(`ruleset ${ruleset.id} requires exchange lackSuit to be null`);
+  }
+  return null;
+}
+
+function assertExchangeSelection(hand, selection, ruleset, lackSuit) {
   const normalizedHand = normalizeHand(hand, ruleset);
   const normalizedSelection = normalizeHand(selection, ruleset);
   if (!ruleset.gameplay.requiresExchangeThree) {
@@ -236,11 +271,30 @@ function assertExchangeSelection(hand, selection, ruleset) {
     throw new Error(`exchange selection must contain ${ruleset.gameplay.exchangeTileCount} tiles`);
   }
   const suits = new Set(normalizedSelection.map((tile) => TILE_BY_ID[tile].suit));
-  if (ruleset.gameplay.exchangeSameSuit && suits.size !== 1) {
-    throw new Error("exchange selection must use one suit");
-  }
   if ([...suits].some((suit) => !SUITED_SUITS.includes(suit))) {
     throw new Error("exchange selection must contain suited tiles");
+  }
+  const targetSuit = exchangeTargetSuit(ruleset, lackSuit);
+  if (ruleset.gameplay.exchangeSameSuit && targetSuit !== null) {
+    const handTargetCount = normalizedHand.filter((tile) => TILE_BY_ID[tile].suit === targetSuit).length;
+    const selectedTargetCount = normalizedSelection.filter((tile) => TILE_BY_ID[tile].suit === targetSuit).length;
+    if (handTargetCount >= ruleset.gameplay.exchangeTileCount) {
+      if (selectedTargetCount !== ruleset.gameplay.exchangeTileCount) {
+        throw new Error("exchange selection must use the declared lack suit");
+      }
+    } else if (
+      !ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient
+      || selectedTargetCount !== handTargetCount
+    ) {
+      throw new Error("exchange selection must include every tile from the declared shortage suit before filling from other suits");
+    }
+  } else if (ruleset.gameplay.exchangeSameSuit && suits.size !== 1) {
+    const shortageSuit = ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient
+      ? exchangeShortageSuit(normalizedHand, normalizedSelection, ruleset)
+      : null;
+    if (shortageSuit === null) {
+      throw new Error("exchange selection must use one suit unless that suit has fewer than three tiles and is fully selected");
+    }
   }
   removeTiles(normalizedHand, normalizedSelection, ruleset);
   return normalizedSelection;
@@ -267,7 +321,7 @@ function uniqueTileCombinations(tiles, count) {
   return combinations;
 }
 
-function chooseExchangeTiles(hand, ruleset) {
+function chooseExchangeTiles(hand, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
   if (!ruleset.gameplay.requiresExchangeThree) {
     throw new Error(`ruleset ${ruleset.id} does not use exchange-three`);
@@ -276,13 +330,26 @@ function chooseExchangeTiles(hand, ruleset) {
     throw new Error("exchange-three recommendation requires an initial 13-tile or dealer 14-tile hand");
   }
 
+  const targetSuit = exchangeTargetSuit(ruleset, lackSuit);
   const ranked = [];
-  for (const suit of SUITED_SUITS) {
+  const candidateSuits = targetSuit === null ? SUITED_SUITS : [targetSuit];
+  for (const suit of candidateSuits) {
     const suitedTiles = normalized.filter((tile) => TILE_BY_ID[tile].suit === suit);
-    if (suitedTiles.length < ruleset.gameplay.exchangeTileCount) {
+    if (suitedTiles.length === 0 && targetSuit === null) {
       continue;
     }
-    const candidates = uniqueTileCombinations(suitedTiles, ruleset.gameplay.exchangeTileCount)
+    let selections;
+    if (suitedTiles.length >= ruleset.gameplay.exchangeTileCount) {
+      selections = uniqueTileCombinations(suitedTiles, ruleset.gameplay.exchangeTileCount);
+    } else if (ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient) {
+      const fillerCount = ruleset.gameplay.exchangeTileCount - suitedTiles.length;
+      const fillerTiles = normalized.filter((tile) => TILE_BY_ID[tile].suit !== suit);
+      selections = uniqueTileCombinations(fillerTiles, fillerCount)
+        .map((fillers) => sortTiles([...suitedTiles, ...fillers]));
+    } else {
+      continue;
+    }
+    const candidates = selections
       .map((tiles) => ({
         tiles,
         remainingShapeScore: structuralShapeScore(removeTiles(normalized, tiles, ruleset), ruleset)
@@ -306,7 +373,8 @@ function chooseExchangeTiles(hand, ruleset) {
       suitTileCount: suitedTiles.length,
       tiles: best.tiles,
       tileLabels: best.tiles.map(tileLabel),
-      remainingShapeScore: best.remainingShapeScore
+      remainingShapeScore: best.remainingShapeScore,
+      usesMixedFill: suitedTiles.length < ruleset.gameplay.exchangeTileCount
     });
   }
 
@@ -326,24 +394,30 @@ function chooseExchangeTiles(hand, ruleset) {
   return {
     suit: best.suit,
     suitLabel: best.label,
+    usesMixedFill: best.usesMixedFill,
     tiles: best.tiles,
     tileLabels: best.tileLabels,
-    reason: `建议换出${best.tileLabels.join("、")}：${best.label}牌共 ${best.suitTileCount} 张，换出后保留结构分 ${best.remainingShapeScore}。`,
+    reason: best.usesMixedFill
+      ? `建议换出${best.tileLabels.join("、")}：定缺${best.label}牌只有 ${best.suitTileCount} 张，已全部选出并用其他花色补足，换出后保留结构分 ${best.remainingShapeScore}。`
+      : `建议换出${best.tileLabels.join("、")}：已定缺${best.label}，从该花色换出三张后保留结构分 ${best.remainingShapeScore}。`,
     ranked
   };
 }
 
-function exchangeHands(hands, selections, direction, ruleset) {
+function exchangeHands(hands, selections, direction, ruleset, lackSuits) {
   if (!Array.isArray(hands) || hands.length !== 4) {
     throw new Error("exchangeHands requires four hands");
   }
   if (!Array.isArray(selections) || selections.length !== 4) {
     throw new Error("exchangeHands requires four selections");
   }
+  if (!Array.isArray(lackSuits) || lackSuits.length !== 4) {
+    throw new Error("exchangeHands requires four lack suits");
+  }
   assertExchangeDirection(direction);
   const normalizedHands = hands.map((hand) => normalizeHand(hand, ruleset));
   const normalizedSelections = selections.map((selection, playerIndex) => (
-    assertExchangeSelection(normalizedHands[playerIndex], selection, ruleset)
+    assertExchangeSelection(normalizedHands[playerIndex], selection, ruleset, lackSuits[playerIndex])
   ));
   const nextHands = normalizedHands.map((hand, playerIndex) => (
     removeTiles(hand, normalizedSelections[playerIndex], ruleset)

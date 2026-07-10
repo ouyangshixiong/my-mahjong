@@ -47,7 +47,7 @@
         <div class="center-panel">
           <div id="exchangePanel" class="phase-panel" hidden>
             <strong>请选择换出的三张牌</strong>
-            <span>三张牌必须属于同一花色；四家选定后按随机方向同时交换。</span>
+            <span>从已定缺花色选择；缺门不足三张时，全选后可用其他牌补足。</span>
             <div id="exchangeSelectionStatus" class="phase-status">已选 0 / 3</div>
             <div class="phase-actions">
               <button id="confirmExchangeButton" type="button">确认换三张</button>
@@ -55,7 +55,7 @@
           </div>
           <div id="lackSuitPanel" class="lack-suit-panel" hidden>
             <strong>请选择定缺</strong>
-            <span>定缺后，手里还有该花色时只能先打该花色。</span>
+            <span>先确认缺门，再从该花色换出三张牌。</span>
             <div class="lack-suit-actions">
               <button type="button" data-lack-suit="m">缺万</button>
               <button type="button" data-lack-suit="p">缺筒</button>

@@ -30,6 +30,9 @@ async function main() {
     assert.equal(xuezhan.ruleset.gameplay.requiresDingque, true);
     assert.equal(xuezhan.ruleset.gameplay.mustDiscardDingqueFirst, true);
     assert.equal(xuezhan.ruleset.gameplay.requiresExchangeThree, true);
+    assert.equal(xuezhan.ruleset.gameplay.dingqueBeforeExchange, true);
+    assert.equal(xuezhan.ruleset.gameplay.exchangeUsesDingqueSuit, true);
+    assert.equal(xuezhan.ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient, true);
     assert.equal(xuezhan.ruleset.gameplay.allowPeng, true);
     assert.equal(xuezhan.ruleset.gameplay.allowGang, true);
     assert.equal(xuezhan.ruleset.gameplay.allowRobGang, true);
@@ -42,10 +45,26 @@ async function main() {
         "m1", "m2", "m3", "m4", "m5",
         "p1", "p2", "p3",
         "s1", "s2", "s3", "s4", "s5"
-      ]
+      ],
+      lackSuit: "p"
     });
     assert.equal(exchange.tiles.length, 3);
     assert.equal(new Set(exchange.tiles.map((tile) => tile[0])).size, 1);
+
+    const shortageExchange = await postJson(`${baseUrl}/ai/exchange`, {
+      rulesetId: "sichuan-xuezhan",
+      hand: [
+        "m4", "m5", "m5", "m6",
+        "p1", "p1", "p1", "p2", "p3", "p5", "p6", "p7",
+        "s5", "s8"
+      ],
+      lackSuit: "s"
+    });
+    assert.equal(shortageExchange.suit, "s");
+    assert.equal(shortageExchange.usesMixedFill, true);
+    assert.equal(shortageExchange.tiles.length, 3);
+    assert.ok(shortageExchange.tiles.includes("s5"));
+    assert.ok(shortageExchange.tiles.includes("s8"));
 
     const lackSuit = await postJson(`${baseUrl}/ai/lack-suit`, {
       rulesetId: "sichuan-xuezhan",
@@ -114,6 +133,15 @@ async function main() {
       "assets/img/table-bg.jpg",
       "assets/sounds/nv/hu.mp3"
     ]) {
+      assert.equal(fs.existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} must exist`);
+    }
+
+    const tileAssetIds = [
+      ...["m", "p", "s"].flatMap((suit) => Array.from({ length: 9 }, (_value, index) => `${suit}${index + 1}`)),
+      ...Array.from({ length: 7 }, (_value, index) => `z${index + 1}`)
+    ];
+    for (const tile of tileAssetIds) {
+      const relativePath = `assets/img/tiles/${tile}.svg`;
       assert.equal(fs.existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} must exist`);
     }
   } finally {

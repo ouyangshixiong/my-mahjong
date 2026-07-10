@@ -13,10 +13,10 @@ function tileCounts(tileIds) {
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 5,
+    version: 7,
     updatedAt: "2026-07-10T00:00:00+08:00",
     name: "四川麻将血战",
-    description: "三门 108 张，发牌后先换三张再定缺；不可吃，可碰杠、一炮多响，胡牌后其余玩家继续血战。",
+    description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
     gameplay: Object.freeze({
       initialHandSize: 13,
@@ -24,8 +24,11 @@ const RULESETS = Object.freeze([
       continueAfterWin: true,
       maxWinners: 3,
       requiresExchangeThree: true,
+      dingqueBeforeExchange: true,
+      exchangeUsesDingqueSuit: true,
       exchangeTileCount: 3,
       exchangeSameSuit: true,
+      exchangeAllowMixedFillWhenInsufficient: true,
       requiresDingque: true,
       mustDiscardDingqueFirst: true,
       allowChi: false,
@@ -73,8 +76,11 @@ const RULESETS = Object.freeze([
       continueAfterWin: false,
       maxWinners: 1,
       requiresExchangeThree: false,
+      dingqueBeforeExchange: false,
+      exchangeUsesDingqueSuit: false,
       exchangeTileCount: 0,
       exchangeSameSuit: false,
+      exchangeAllowMixedFillWhenInsufficient: false,
       requiresDingque: false,
       mustDiscardDingqueFirst: false,
       allowChi: false,
@@ -134,8 +140,11 @@ function assertRulesetShape(ruleset) {
     "continueAfterWin",
     "maxWinners",
     "requiresExchangeThree",
+    "dingqueBeforeExchange",
+    "exchangeUsesDingqueSuit",
     "exchangeTileCount",
     "exchangeSameSuit",
+    "exchangeAllowMixedFillWhenInsufficient",
     "requiresDingque",
     "mustDiscardDingqueFirst",
     "allowChi",
@@ -160,7 +169,10 @@ function assertRulesetShape(ruleset) {
   for (const field of [
     "continueAfterWin",
     "requiresExchangeThree",
+    "dingqueBeforeExchange",
+    "exchangeUsesDingqueSuit",
     "exchangeSameSuit",
+    "exchangeAllowMixedFillWhenInsufficient",
     "requiresDingque",
     "mustDiscardDingqueFirst",
     "allowChi",
@@ -191,6 +203,26 @@ function assertRulesetShape(ruleset) {
   }
   if (!ruleset.gameplay.requiresExchangeThree && ruleset.gameplay.exchangeTileCount !== 0) {
     throw new Error(`ruleset ${ruleset.id} without exchange-three must use exchangeTileCount 0`);
+  }
+  if (ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient && !ruleset.gameplay.requiresExchangeThree) {
+    throw new Error(`ruleset ${ruleset.id} cannot allow mixed exchange fill without exchange-three`);
+  }
+  if (
+    ruleset.gameplay.dingqueBeforeExchange
+    && (!ruleset.gameplay.requiresDingque || !ruleset.gameplay.requiresExchangeThree)
+  ) {
+    throw new Error(`ruleset ${ruleset.id} cannot put dingque before exchange without both phases`);
+  }
+  if (
+    ruleset.gameplay.exchangeUsesDingqueSuit
+    && (
+      !ruleset.gameplay.requiresDingque
+      || !ruleset.gameplay.requiresExchangeThree
+      || !ruleset.gameplay.dingqueBeforeExchange
+      || !ruleset.gameplay.exchangeSameSuit
+    )
+  ) {
+    throw new Error(`ruleset ${ruleset.id} cannot exchange the dingque suit with its current phase settings`);
   }
   if (ruleset.gameplay.allowRobGang && !ruleset.gameplay.allowGang) {
     throw new Error(`ruleset ${ruleset.id} cannot allow rob-gang while gang is disabled`);

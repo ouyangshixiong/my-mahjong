@@ -47,6 +47,7 @@ const EXCHANGE_DIRECTION_LABELS = Object.freeze({
   counterclockwise: "逆时针",
   across: "对家"
 });
+const TILE_ART_DIRECTORY = "../assets/img/tiles";
 
 const state = {
   rulesets: [],
@@ -64,6 +65,7 @@ const state = {
   lackSuits: [null, null, null, null],
   awaitingExchange: false,
   exchangeSelections: [[], [], [], []],
+  exchangePrimarySuit: null,
   exchangeDirection: null,
   awaitingLackSuit: false,
   awaitingPlayerDiscard: false,
@@ -146,8 +148,11 @@ function assertRuleset(ruleset) {
   }
   for (const field of [
     "requiresExchangeThree",
+    "dingqueBeforeExchange",
+    "exchangeUsesDingqueSuit",
     "exchangeTileCount",
     "exchangeSameSuit",
+    "exchangeAllowMixedFillWhenInsufficient",
     "requiresDingque",
     "mustDiscardDingqueFirst",
     "allowPeng",
@@ -258,7 +263,33 @@ function removeTilesLocal(hand, tiles) {
   return sortTiles(remaining);
 }
 
-function assertExchangeSelectionLocal(hand, selection, ruleset) {
+function exchangeShortageSuitLocal(hand, selection, ruleset) {
+  for (const suit of SUITED_SUITS) {
+    const handSuitCount = countSuitTilesLocal(hand, suit);
+    const selectedSuitCount = selection.filter((tile) => TILE_BY_ID[tile].suitKey === suit).length;
+    if (
+      handSuitCount > 0
+      && handSuitCount < ruleset.gameplay.exchangeTileCount
+      && selectedSuitCount === handSuitCount
+    ) {
+      return suit;
+    }
+  }
+  return null;
+}
+
+function exchangeTargetSuitLocal(ruleset, lackSuit) {
+  if (ruleset.gameplay.exchangeUsesDingqueSuit) {
+    assertLackSuitLocal(lackSuit, ruleset);
+    return lackSuit;
+  }
+  if (lackSuit !== null) {
+    throw new Error(`玩法 ${ruleset.id} 的换牌定缺参数必须为 null`);
+  }
+  return null;
+}
+
+function assertExchangeSelectionLocal(hand, selection, ruleset, lackSuit) {
   if (!ruleset.gameplay.requiresExchangeThree) {
     throw new Error(`玩法 ${ruleset.id} 不使用换三张`);
   }
@@ -266,13 +297,42 @@ function assertExchangeSelectionLocal(hand, selection, ruleset) {
     throw new Error(`换三张必须选择 ${ruleset.gameplay.exchangeTileCount} 张牌`);
   }
   const suits = new Set(selection.map((tile) => TILE_BY_ID[tile].suitKey));
-  if (ruleset.gameplay.exchangeSameSuit && suits.size !== 1) {
-    throw new Error("换出的三张牌必须是同一花色");
-  }
   if ([...suits].some((suit) => !SUITED_SUITS.includes(suit))) {
     throw new Error("换三张只能选择万、筒、条");
   }
+  const targetSuit = exchangeTargetSuitLocal(ruleset, lackSuit);
+  if (ruleset.gameplay.exchangeSameSuit && targetSuit !== null) {
+    const handTargetCount = countSuitTilesLocal(hand, targetSuit);
+    const selectedTargetCount = selection.filter((tile) => TILE_BY_ID[tile].suitKey === targetSuit).length;
+    if (handTargetCount >= ruleset.gameplay.exchangeTileCount) {
+      if (selectedTargetCount !== ruleset.gameplay.exchangeTileCount) {
+        throw new Error(`已定缺${suitLabelLocal(targetSuit)}，换出的三张牌必须属于该花色`);
+      }
+    } else if (
+      !ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient
+      || selectedTargetCount !== handTargetCount
+    ) {
+      throw new Error(`定缺${suitLabelLocal(targetSuit)}不足三张时，必须先全部选出，再用其他花色补足`);
+    }
+  } else if (ruleset.gameplay.exchangeSameSuit && suits.size !== 1) {
+    const shortageSuit = ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient
+      ? exchangeShortageSuitLocal(hand, selection, ruleset)
+      : null;
+    if (shortageSuit === null) {
+      throw new Error("换出的三张牌应为同一花色；只有该花色不足三张且已全部选出时，才能用其他花色补足");
+    }
+  }
   removeTilesLocal(hand, selection);
+}
+
+function exchangeMixedFillUnlockedLocal(hand, selection, primarySuit, ruleset) {
+  if (!ruleset.gameplay.exchangeAllowMixedFillWhenInsufficient || primarySuit === null) {
+    return false;
+  }
+  const handSuitCount = countSuitTilesLocal(hand, primarySuit);
+  const selectedSuitCount = selection.filter((tile) => TILE_BY_ID[tile].suitKey === primarySuit).length;
+  return handSuitCount < ruleset.gameplay.exchangeTileCount
+    && selectedSuitCount === handSuitCount;
 }
 
 function exchangeDirectionOffset(direction) {
@@ -296,15 +356,18 @@ function exchangeDirectionLabel(direction) {
   return label;
 }
 
-function exchangeHandsLocal(hands, selections, direction, ruleset) {
+function exchangeHandsLocal(hands, selections, direction, ruleset, lackSuits) {
   if (!Array.isArray(hands) || hands.length !== 4) {
     throw new Error("换三张要求四家手牌");
   }
   if (!Array.isArray(selections) || selections.length !== 4) {
     throw new Error("换三张要求四家选牌");
   }
+  if (!Array.isArray(lackSuits) || lackSuits.length !== 4) {
+    throw new Error("换三张要求四家定缺结果");
+  }
   const nextHands = hands.map((hand, playerIndex) => {
-    assertExchangeSelectionLocal(hand, selections[playerIndex], ruleset);
+    assertExchangeSelectionLocal(hand, selections[playerIndex], ruleset, lackSuits[playerIndex]);
     return removeTilesLocal(hand, selections[playerIndex]);
   });
   const received = Array.from({ length: 4 }, () => []);
@@ -839,6 +902,15 @@ function tileLabel(tile) {
   return `${def.rank}${def.suit}`;
 }
 
+function createTileArt(tile) {
+  const image = document.createElement("img");
+  image.className = "tile-art";
+  image.src = `${TILE_ART_DIRECTORY}/${tile}.svg`;
+  image.alt = "";
+  image.draggable = false;
+  return image;
+}
+
 function createTile(tile, size, interaction) {
   const def = TILE_BY_ID[tile];
   if (def === undefined) {
@@ -849,6 +921,8 @@ function createTile(tile, size, interaction) {
   }
   const element = document.createElement(interaction === null ? "div" : "button");
   element.className = `tile suit-${def.suitKey}`;
+  element.setAttribute("aria-label", tileLabel(tile));
+  element.title = tileLabel(tile);
   if (size === "small") {
     element.classList.add("small");
   }
@@ -876,13 +950,7 @@ function createTile(tile, size, interaction) {
     element.classList.add("recommended");
   }
 
-  const rank = document.createElement("span");
-  rank.className = "rank";
-  rank.textContent = def.rank;
-  const suit = document.createElement("span");
-  suit.className = "suit";
-  suit.textContent = def.suit;
-  element.append(rank, suit);
+  element.append(createTileArt(tile));
   return element;
 }
 
@@ -922,9 +990,22 @@ function render() {
     for (const tile of state.exchangeSelections[0]) {
       selectionCounts[tile] = selectionCounts[tile] === undefined ? 1 : selectionCounts[tile] + 1;
     }
-    const selectedSuit = state.exchangeSelections[0].length === 0
-      ? null
-      : TILE_BY_ID[state.exchangeSelections[0][0]].suitKey;
+    const primarySuit = state.exchangePrimarySuit;
+    if (state.exchangeSelections[0].length > 0 && primarySuit === null) {
+      throw new Error("换三张已有选牌但缺少目标花色");
+    }
+    if (ruleset.gameplay.exchangeUsesDingqueSuit) {
+      const expectedSuit = exchangeTargetSuitLocal(ruleset, state.lackSuits[0]);
+      if (primarySuit !== expectedSuit) {
+        throw new Error(`换牌目标花色 ${primarySuit} 与定缺花色 ${expectedSuit} 不一致`);
+      }
+    }
+    const mixedFillUnlocked = exchangeMixedFillUnlockedLocal(
+      state.hands[0],
+      state.exchangeSelections[0],
+      primarySuit,
+      ruleset
+    );
     replaceChildren(nodes.selfHand, state.hands[0].map((tile) => {
       const selected = selectionCounts[tile] !== undefined && selectionCounts[tile] > 0;
       if (selected) {
@@ -932,7 +1013,7 @@ function render() {
       }
       const tileSuit = TILE_BY_ID[tile].suitKey;
       const canAdd = state.exchangeSelections[0].length < ruleset.gameplay.exchangeTileCount
-        && (selectedSuit === null || tileSuit === selectedSuit);
+        && (primarySuit === null || tileSuit === primarySuit || mixedFillUnlocked);
       const interactive = selected || canAdd;
       const element = createTile(tile, "normal", interactive ? {
         action: "exchange",
@@ -943,7 +1024,7 @@ function render() {
         element.classList.add("blocked-by-exchange");
         element.title = state.exchangeSelections[0].length === ruleset.gameplay.exchangeTileCount
           ? `已经选满 ${ruleset.gameplay.exchangeTileCount} 张牌`
-          : "换出的三张牌必须是同一花色";
+          : "请先选完定缺花色；该花色不足三张时可用其他花色补足";
       }
       return element;
     }));
@@ -1036,7 +1117,9 @@ function roundStatusText() {
     return `${state.ruleset.name}：牌局结束`;
   }
   if (state.awaitingExchange) {
-    return `${state.ruleset.name}：请选择同一花色的三张牌交换`;
+    return state.ruleset.gameplay.exchangeUsesDingqueSuit
+      ? `${state.ruleset.name}：已定缺，请从缺门换出三张；不足三张时可用其他牌补足`
+      : `${state.ruleset.name}：请选择三张牌交换；目标花色不足三张时可异色补足`;
   }
   if (state.awaitingLackSuit) {
     return `${state.ruleset.name}：请选择定缺`;
@@ -1141,6 +1224,7 @@ async function startRound() {
   state.lackSuits = [null, null, null, null];
   state.awaitingExchange = false;
   state.exchangeSelections = [[], [], [], []];
+  state.exchangePrimarySuit = null;
   state.exchangeDirection = null;
   state.awaitingLackSuit = false;
   state.awaitingPlayerDiscard = false;
@@ -1163,40 +1247,67 @@ async function startRound() {
   }
 
   logMessage(`新牌局开始：${ruleset.description}`);
-  if (ruleset.gameplay.requiresExchangeThree) {
-    const botChoices = await Promise.all([1, 2, 3].map((playerIndex) => window.mahjongAI.chooseExchangeTiles({
-      rulesetId: ruleset.id,
-      hand: state.hands[playerIndex]
-    })));
-    for (let index = 0; index < botChoices.length; index += 1) {
-      state.exchangeSelections[index + 1] = botChoices[index].tiles;
-    }
-    state.awaitingExchange = true;
-    logMessage("请先选择同一花色的三张牌；四家会按随机方向同时交换，之后再定缺。");
-    renderExchangeAdvisor(null);
-    render();
+  if (ruleset.gameplay.dingqueBeforeExchange) {
+    await beginDingquePhase();
     return;
   }
-
-  await beginDingqueOrPlay();
+  if (ruleset.gameplay.requiresExchangeThree) {
+    await beginExchangePhase();
+    return;
+  }
+  if (ruleset.gameplay.requiresDingque) {
+    await beginDingquePhase();
+    return;
+  }
+  await beginPlayPhase();
 }
 
-async function beginDingqueOrPlay() {
+async function beginDingquePhase() {
   const ruleset = currentRuleset();
-  if (ruleset.gameplay.requiresDingque) {
-    const botChoices = await Promise.all([1, 2, 3].map((playerIndex) => window.mahjongAI.chooseLackSuit({
-      rulesetId: ruleset.id,
-      hand: state.hands[playerIndex]
-    })));
-    for (let index = 0; index < botChoices.length; index += 1) {
-      state.lackSuits[index + 1] = botChoices[index].lackSuit;
-    }
-    state.awaitingLackSuit = true;
-    logMessage("请选择定缺花色；定缺牌未打完前，只能先打该花色。");
-    renderLackSuitAdvisor(null);
-    render();
-    return;
+  if (!ruleset.gameplay.requiresDingque) {
+    throw new Error(`玩法 ${ruleset.id} 不使用定缺`);
   }
+  const botChoices = await Promise.all([1, 2, 3].map((playerIndex) => window.mahjongAI.chooseLackSuit({
+    rulesetId: ruleset.id,
+    hand: state.hands[playerIndex]
+  })));
+  for (let index = 0; index < botChoices.length; index += 1) {
+    state.lackSuits[index + 1] = botChoices[index].lackSuit;
+  }
+  state.awaitingLackSuit = true;
+  logMessage(ruleset.gameplay.dingqueBeforeExchange
+    ? "请先选择定缺花色；确认后四家再从各自定缺花色换出三张牌。"
+    : "请选择定缺花色；定缺牌未打完前，只能先打该花色。");
+  renderLackSuitAdvisor(null);
+  render();
+}
+
+async function beginExchangePhase() {
+  const ruleset = currentRuleset();
+  if (!ruleset.gameplay.requiresExchangeThree) {
+    throw new Error(`玩法 ${ruleset.id} 不使用换三张`);
+  }
+  const lackSuits = ruleset.gameplay.exchangeUsesDingqueSuit
+    ? state.lackSuits
+    : [null, null, null, null];
+  const botChoices = await Promise.all([1, 2, 3].map((playerIndex) => window.mahjongAI.chooseExchangeTiles({
+    rulesetId: ruleset.id,
+    hand: state.hands[playerIndex],
+    lackSuit: lackSuits[playerIndex]
+  })));
+  for (let index = 0; index < botChoices.length; index += 1) {
+    state.exchangeSelections[index + 1] = botChoices[index].tiles;
+  }
+  state.exchangePrimarySuit = exchangeTargetSuitLocal(ruleset, lackSuits[0]);
+  state.awaitingExchange = true;
+  logMessage(state.exchangePrimarySuit === null
+    ? "请选择三张牌；优先选择同一花色，该花色不足三张时须全部选出，再用其他花色补足。"
+    : `你已定缺${suitLabelLocal(state.exchangePrimarySuit)}；请从该花色换出三张，不足三张时先全部选出，再用其他牌补足。`);
+  renderExchangeAdvisor(null);
+  render();
+}
+
+async function beginPlayPhase() {
   state.awaitingPlayerDiscard = true;
   state.selfDrawEligible = true;
   render();
@@ -1208,22 +1319,50 @@ async function toggleExchangeTile(tile, selected) {
   if (!state.awaitingExchange) {
     throw new Error("当前不在换三张阶段");
   }
+  const tileSuit = TILE_BY_ID[tile].suitKey;
+  if (!SUITED_SUITS.includes(tileSuit)) {
+    throw new Error("换三张只能选择万、筒、条");
+  }
   if (selected) {
+    if (state.exchangePrimarySuit === null) {
+      throw new Error("换三张已有选牌但缺少目标花色");
+    }
+    const hasMixedFill = state.exchangeSelections[0]
+      .some((selectedTile) => TILE_BY_ID[selectedTile].suitKey !== state.exchangePrimarySuit);
+    if (tileSuit === state.exchangePrimarySuit && hasMixedFill) {
+      throw new Error("请先取消用于补足的其他花色牌，再取消目标花色牌");
+    }
     state.exchangeSelections[0] = removeOne(state.exchangeSelections[0], tile);
+    if (state.exchangeSelections[0].length === 0) {
+      state.exchangePrimarySuit = exchangeTargetSuitLocal(
+        ruleset,
+        ruleset.gameplay.exchangeUsesDingqueSuit ? state.lackSuits[0] : null
+      );
+    }
   } else {
     if (state.exchangeSelections[0].length >= ruleset.gameplay.exchangeTileCount) {
       throw new Error(`最多只能选择 ${ruleset.gameplay.exchangeTileCount} 张牌`);
-    }
-    if (state.exchangeSelections[0].length > 0) {
-      const selectedSuit = TILE_BY_ID[state.exchangeSelections[0][0]].suitKey;
-      if (TILE_BY_ID[tile].suitKey !== selectedSuit) {
-        throw new Error("换出的三张牌必须是同一花色");
-      }
     }
     const selectedCount = state.exchangeSelections[0].filter((selectedTile) => selectedTile === tile).length;
     const handCount = state.hands[0].filter((handTile) => handTile === tile).length;
     if (selectedCount >= handCount) {
       throw new Error(`手牌中没有更多${tileLabel(tile)}可选`);
+    }
+    if (state.exchangePrimarySuit === null) {
+      if (state.exchangeSelections[0].length !== 0) {
+        throw new Error("换三张已有选牌但缺少目标花色");
+      }
+      state.exchangePrimarySuit = tileSuit;
+    } else if (
+      tileSuit !== state.exchangePrimarySuit
+      && !exchangeMixedFillUnlockedLocal(
+        state.hands[0],
+        state.exchangeSelections[0],
+        state.exchangePrimarySuit,
+        ruleset
+      )
+    ) {
+      throw new Error("请先选完目标花色；该花色不足三张时才能用其他花色补足");
     }
     state.exchangeSelections[0] = sortTiles([...state.exchangeSelections[0], tile]);
   }
@@ -1236,18 +1375,26 @@ async function confirmExchange() {
   if (!state.awaitingExchange) {
     throw new Error("当前不在换三张阶段");
   }
-  assertExchangeSelectionLocal(state.hands[0], state.exchangeSelections[0], ruleset);
+  const lackSuits = ruleset.gameplay.exchangeUsesDingqueSuit
+    ? state.lackSuits
+    : [null, null, null, null];
+  assertExchangeSelectionLocal(state.hands[0], state.exchangeSelections[0], ruleset, lackSuits[0]);
   const direction = EXCHANGE_DIRECTIONS[randomInt(EXCHANGE_DIRECTIONS.length)];
   const selections = state.exchangeSelections.map((selection) => sortTiles(selection));
-  const result = exchangeHandsLocal(state.hands, selections, direction, ruleset);
+  const result = exchangeHandsLocal(state.hands, selections, direction, ruleset, lackSuits);
   const sent = selections[0];
   state.hands = result.hands;
   state.exchangeDirection = direction;
   state.awaitingExchange = false;
   state.exchangeSelections = [[], [], [], []];
+  state.exchangePrimarySuit = null;
   logMessage(`${exchangeDirectionLabel(direction)}换三张：你换出 ${sent.map(tileLabel).join("、")}，收到 ${result.received[0].map(tileLabel).join("、")}。`);
   render();
-  await beginDingqueOrPlay();
+  if (ruleset.gameplay.requiresDingque && !ruleset.gameplay.dingqueBeforeExchange) {
+    await beginDingquePhase();
+    return;
+  }
+  await beginPlayPhase();
 }
 
 async function declareLackSuit(lackSuit) {
@@ -1258,13 +1405,15 @@ async function declareLackSuit(lackSuit) {
   assertLackSuitLocal(lackSuit, ruleset);
   state.lackSuits[0] = lackSuit;
   state.awaitingLackSuit = false;
-  state.awaitingPlayerDiscard = true;
-  state.selfDrawEligible = true;
   state.recommendedLackSuit = null;
   logMessage(`你定缺${suitLabelLocal(lackSuit)}。`);
   logMessage(`上家缺${suitLabelLocal(state.lackSuits[1])}，对家缺${suitLabelLocal(state.lackSuits[2])}，下家缺${suitLabelLocal(state.lackSuits[3])}。`);
   render();
-  await refreshAnalysis();
+  if (ruleset.gameplay.requiresExchangeThree && ruleset.gameplay.dingqueBeforeExchange) {
+    await beginExchangePhase();
+    return;
+  }
+  await beginPlayPhase();
 }
 
 async function discardSelf(tile) {
@@ -1757,11 +1906,19 @@ async function performBotDiscard(playerIndex, allowHu) {
 async function askAi() {
   const ruleset = currentRuleset();
   if (state.awaitingExchange) {
+    const lackSuit = ruleset.gameplay.exchangeUsesDingqueSuit ? state.lackSuits[0] : null;
     const choice = await window.mahjongAI.chooseExchangeTiles({
       rulesetId: ruleset.id,
-      hand: state.hands[0]
+      hand: state.hands[0],
+      lackSuit
     });
+    const targetSuit = exchangeTargetSuitLocal(ruleset, lackSuit);
+    if (targetSuit !== null && choice.suit !== targetSuit) {
+      throw new Error(`AI 换牌花色 ${choice.suit} 与定缺花色 ${targetSuit} 不一致`);
+    }
+    assertExchangeSelectionLocal(state.hands[0], choice.tiles, ruleset, lackSuit);
     state.exchangeSelections[0] = choice.tiles;
+    state.exchangePrimarySuit = choice.suit;
     renderExchangeAdvisor(choice);
     render();
     return;
@@ -2149,6 +2306,7 @@ function readySettlementInfo(playerIndex, ruleset) {
 }
 
 function renderLackSuitAdvisor(choice) {
+  const ruleset = currentRuleset();
   const counts = SUITED_SUITS.map((suit) => `缺${suitLabelLocal(suit)}：手中 ${countSuitTilesLocal(state.hands[0], suit)} 张`).join("；");
   const ranking = choice === null
     ? ""
@@ -2157,7 +2315,9 @@ function renderLackSuitAdvisor(choice) {
     <div class="advisor-card">
       <h2>定缺阶段</h2>
       <p>${escapeHtml(counts)}</p>
-      <p>选定后不可更改；手里仍有定缺花色时，只能优先打该花色，且不能胡牌。</p>
+      <p>${ruleset.gameplay.dingqueBeforeExchange
+        ? "选定后不可更改；确认定缺后进入换三张，换牌优先使用定缺花色。正式出牌后，定缺花色未清空时只能先打该花色，且不能胡牌。"
+        : "选定后不可更改；手里仍有定缺花色时，只能优先打该花色，且不能胡牌。"}</p>
     </div>
     <div class="advisor-card">
       <h2>${choice === null ? "请选择缺门" : "AI 定缺建议"}</h2>
@@ -2167,16 +2327,24 @@ function renderLackSuitAdvisor(choice) {
 }
 
 function renderExchangeAdvisor(choice) {
+  const ruleset = currentRuleset();
   const selection = state.exchangeSelections[0];
   const selectedText = selection.length === 0 ? "尚未选牌" : selection.map(tileLabel).join("、");
+  const lackSuit = ruleset.gameplay.exchangeUsesDingqueSuit ? state.lackSuits[0] : null;
+  const targetSuit = exchangeTargetSuitLocal(ruleset, lackSuit);
+  const targetText = targetSuit === null ? "" : `<p>你已定缺${escapeHtml(suitLabelLocal(targetSuit))}。</p>`;
+  const instruction = targetSuit === null
+    ? `优先从同一花色选择 ${ruleset.gameplay.exchangeTileCount} 张；若目标花色整手牌不足三张，须先全部选出，再用任意其他牌补足。`
+    : `须从定缺花色选择 ${ruleset.gameplay.exchangeTileCount} 张；若该花色整手牌不足三张，须先全部选出，再用任意其他牌补足。`;
   const ranking = choice === null
     ? ""
-    : choice.ranked.map((item) => `<li>${escapeHtml(item.label)}牌 ${item.suitTileCount} 张：换 ${escapeHtml(item.tileLabels.join("、"))}，保留结构分 ${item.remainingShapeScore}</li>`).join("");
+    : choice.ranked.map((item) => `<li>${escapeHtml(item.label)}牌 ${item.suitTileCount} 张${item.usesMixedFill ? "（异色补足）" : ""}：换 ${escapeHtml(item.tileLabels.join("、"))}，保留结构分 ${item.remainingShapeScore}</li>`).join("");
   nodes.advisorContent.innerHTML = `
     <div class="advisor-card">
       <h2>换三张阶段</h2>
+      ${targetText}
       <p>当前选择：${escapeHtml(selectedText)}</p>
-      <p>必须从同一花色选择 ${currentRuleset().gameplay.exchangeTileCount} 张；交换方向会在顺时针、逆时针、对家中随机确定。</p>
+      <p>${instruction}交换方向会在顺时针、逆时针、对家中随机确定。</p>
     </div>
     <div class="advisor-card">
       <h2>${choice === null ? "请选择换牌" : "AI 换牌建议"}</h2>
