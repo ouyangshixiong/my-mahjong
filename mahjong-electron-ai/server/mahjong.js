@@ -397,9 +397,13 @@ function chooseExchangeTiles(hand, ruleset, lackSuit) {
     usesMixedFill: best.usesMixedFill,
     tiles: best.tiles,
     tileLabels: best.tileLabels,
-    reason: best.usesMixedFill
-      ? `建议换出${best.tileLabels.join("、")}：定缺${best.label}牌只有 ${best.suitTileCount} 张，已全部选出并用其他花色补足，换出后保留结构分 ${best.remainingShapeScore}。`
-      : `建议换出${best.tileLabels.join("、")}：已定缺${best.label}，从该花色换出三张后保留结构分 ${best.remainingShapeScore}。`,
+    reason: targetSuit === null
+      ? (best.usesMixedFill
+        ? `建议换出${best.tileLabels.join("、")}：${best.label}牌只有 ${best.suitTileCount} 张，已全部选出并用其他花色补足，换出后保留结构分 ${best.remainingShapeScore}。`
+        : `建议换出${best.tileLabels.join("、")}：${best.label}牌共 ${best.suitTileCount} 张，换出后保留结构分 ${best.remainingShapeScore}。`)
+      : (best.usesMixedFill
+        ? `建议换出${best.tileLabels.join("、")}：定缺${best.label}牌只有 ${best.suitTileCount} 张，已全部选出并用其他花色补足，换出后保留结构分 ${best.remainingShapeScore}。`
+        : `建议换出${best.tileLabels.join("、")}：已定缺${best.label}，从该花色换出三张后保留结构分 ${best.remainingShapeScore}。`),
     ranked
   };
 }
