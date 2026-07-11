@@ -1,4 +1,4 @@
-const { contextBridge } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 const { URL } = require("node:url");
 
 function getServiceUrl() {
@@ -66,5 +66,16 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   recommendDiscard(payload) {
     return requestJson("/ai/discard", payload);
+  },
+  updateMenuState(payload) {
+    ipcRenderer.send("menu:update-state", payload);
+  },
+  onMenuCommand(callback) {
+    if (typeof callback !== "function") {
+      throw new Error("menu command callback must be a function");
+    }
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on("menu:command", listener);
+    return () => ipcRenderer.removeListener("menu:command", listener);
   }
 });

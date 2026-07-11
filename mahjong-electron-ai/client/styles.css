@@ -23,64 +23,15 @@ button {
 
 .shell {
   display: grid;
-  grid-template-rows: 76px minmax(0, 1fr) 168px;
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   background:
     linear-gradient(180deg, rgba(16, 35, 31, 0.88), rgba(9, 22, 26, 0.92)),
     url("../assets/img/table-bg.jpg") center / cover no-repeat;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 22px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(7, 18, 20, 0.78);
-}
-
-h1 {
-  margin: 0 0 4px;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-#roundStatus {
-  margin: 0;
-  color: #c8d8c9;
-  font-size: 14px;
-}
-
-#roundStatus.next-action-status {
-  color: #fff0a8;
-  text-shadow: 0 0 12px rgba(255, 211, 106, 0.7);
-  animation: status-guide 1.15s ease-in-out 2;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.ruleset-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #cfe1d9;
-  font-size: 14px;
-}
-
-.ruleset-control select {
-  height: 40px;
-  min-width: 150px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  color: #f9fbf3;
-  background: #193c39;
-  padding: 0 10px;
-  font: inherit;
+.shell.advisor-visible {
+  grid-template-rows: minmax(0, 1fr) 168px;
 }
 
 .gang-select {
@@ -92,26 +43,6 @@ h1 {
   background: rgba(19, 58, 52, 0.96);
   padding: 0 12px;
   font: inherit;
-}
-
-.toolbar button {
-  min-width: 88px;
-  height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  color: #f9fbf3;
-  background: #275c55;
-  cursor: pointer;
-}
-
-.toolbar button:hover {
-  background: #327268;
-}
-
-.toolbar button:disabled {
-  cursor: not-allowed;
-  color: #8b9996;
-  background: #223330;
 }
 
 .table {
@@ -358,10 +289,16 @@ h1 {
 }
 
 .closed-hand.vertical {
-  flex-wrap: wrap;
-  width: 112px;
-  min-height: 156px;
+  flex-direction: column;
+  justify-content: center;
+  width: 42px;
+  min-height: 320px;
   margin: 0 auto;
+}
+
+.closed-hand.vertical .tile-back {
+  width: 40px;
+  height: 28px;
 }
 
 .tile-back {
@@ -743,6 +680,10 @@ h1 {
   grid-template-rows: 42px minmax(0, 1fr);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(5, 14, 17, 0.86);
+}
+
+.advisor[hidden] {
+  display: none;
 }
 
 .advisor header {

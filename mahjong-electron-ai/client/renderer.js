@@ -110,6 +110,7 @@ const state = {
   recommendedLackSuit: null,
   meldEffects: [null, null, null, null],
   postMeldAction: null,
+  advisorVisible: false,
   messages: []
 };
 
@@ -120,6 +121,7 @@ let nextMeldEffectId = 1;
 const meldEffectTimers = [null, null, null, null];
 
 const nodes = {
+  shell: mustGet("shell"),
   roundStatus: mustGet("roundStatus"),
   wallCount: mustGet("wallCount"),
   player0Wall: mustGet("player0Wall"),
@@ -156,6 +158,7 @@ const nodes = {
   confirmExchangeButton: mustGet("confirmExchangeButton"),
   lackSuitPanel: mustGet("lackSuitPanel"),
   advisorContent: mustGet("advisorContent"),
+  advisor: mustGet("advisor"),
   serviceBadge: mustGet("serviceBadge"),
   rulesetBadge: mustGet("rulesetBadge"),
   rulesetSelect: mustGet("rulesetSelect"),
@@ -1253,6 +1256,8 @@ function render() {
   nodes.rulesetBadge.textContent = ruleset === null ? "玩法未加载" : `${ruleset.name} v${ruleset.version}`;
   nodes.roundStatus.textContent = roundStatusText();
   nodes.roundStatus.classList.toggle("next-action-status", state.postMeldAction !== null && state.awaitingPlayerDiscard);
+  nodes.advisor.hidden = !state.advisorVisible;
+  nodes.shell.classList.toggle("advisor-visible", state.advisorVisible);
 
   const canDiscard = canSelfDiscard();
   if (state.awaitingExchange) {
@@ -1377,6 +1382,17 @@ function render() {
   nodes.newRoundButton.disabled = state.ruleset === null;
   nodes.updateRulesButton.disabled = false;
   nodes.rulesetSelect.disabled = state.rulesets.length === 0;
+  window.mahjongAI.updateMenuState({
+    rulesets: state.rulesets.map((availableRuleset) => ({
+      id: availableRuleset.id,
+      label: `${availableRuleset.name} v${availableRuleset.version}`
+    })),
+    currentRulesetId: ruleset === null ? null : ruleset.id,
+    canStartRound: ruleset !== null,
+    canAskAi: !nodes.askAiButton.disabled,
+    canUpdateRules: true,
+    advisorVisible: state.advisorVisible
+  });
 }
 
 function formatLackSuit(playerIndex, includePrefix = false) {
@@ -2846,6 +2862,40 @@ nodes.updateRulesButton.addEventListener("click", () => {
 });
 nodes.rulesetSelect.addEventListener("change", () => {
   runAsync(() => changeRuleset(nodes.rulesetSelect.value));
+});
+
+window.mahjongAI.onMenuCommand((command) => {
+  if (command === null || typeof command !== "object" || typeof command.type !== "string") {
+    throw new Error("收到无效菜单命令");
+  }
+  if (command.type === "newRound") {
+    runAsync(startRound);
+    return;
+  }
+  if (command.type === "askAi") {
+    runAsync(askAi);
+    return;
+  }
+  if (command.type === "updateRules") {
+    runAsync(updateRulesets);
+    return;
+  }
+  if (command.type === "changeRuleset") {
+    if (typeof command.rulesetId !== "string" || command.rulesetId.length === 0) {
+      throw new Error("切换玩法命令缺少 rulesetId");
+    }
+    runAsync(() => changeRuleset(command.rulesetId));
+    return;
+  }
+  if (command.type === "setAdvisorVisible") {
+    if (typeof command.visible !== "boolean") {
+      throw new Error("策略面板菜单命令缺少 visible");
+    }
+    state.advisorVisible = command.visible;
+    render();
+    return;
+  }
+  throw new Error(`未知菜单命令：${command.type}`);
 });
 
 nodes.serviceBadge.textContent = `AI 服务 ${window.mahjongAI.serviceUrl}`;

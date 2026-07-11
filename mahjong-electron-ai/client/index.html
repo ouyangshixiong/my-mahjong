@@ -3,26 +3,18 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BeiMi Mahjong AI Trainer</title>
+    <title>麻将 AI 训练</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <main class="shell">
-      <section class="topbar">
-        <div>
-          <h1>贝密麻将 AI 训练台</h1>
-          <p id="roundStatus">初始化中</p>
-        </div>
-        <div class="toolbar">
-          <label class="ruleset-control">
-            <span>开局玩法</span>
-            <select id="rulesetSelect"></select>
-          </label>
-          <button id="updateRulesButton" type="button">更新玩法</button>
-          <button id="newRoundButton" type="button">新牌局</button>
-          <button id="askAiButton" type="button">AI 建议</button>
-        </div>
-      </section>
+    <main id="shell" class="shell">
+      <div class="menu-command-controls" hidden>
+        <span id="roundStatus">初始化中</span>
+        <select id="rulesetSelect" tabindex="-1"></select>
+        <button id="updateRulesButton" type="button" tabindex="-1">更新玩法</button>
+        <button id="newRoundButton" type="button" tabindex="-1">新牌局</button>
+        <button id="askAiButton" type="button" tabindex="-1">AI 建议</button>
+      </div>
 
       <section class="table">
         <div class="opponent opponent-top">
@@ -106,7 +98,7 @@
         </div>
       </section>
 
-      <aside class="advisor">
+      <aside id="advisor" class="advisor" hidden>
         <header>
           <strong>策略面板</strong>
           <span id="rulesetBadge">玩法未加载</span>

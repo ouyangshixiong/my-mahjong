@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain } = require("electron");
 const path = require("node:path");
 const http = require("node:http");
 const https = require("node:https");
@@ -28,6 +28,161 @@ function getServiceUrl() {
 const SERVICE_URL = getServiceUrl();
 
 let mainWindow = null;
+let menuState = {
+  rulesets: [],
+  currentRulesetId: null,
+  canStartRound: false,
+  canAskAi: false,
+  canUpdateRules: true,
+  advisorVisible: false
+};
+
+app.name = "麻将 AI 训练";
+
+function sendMenuCommand(command) {
+  if (mainWindow === null || mainWindow.isDestroyed()) {
+    throw new Error(`Cannot send menu command without a main window: ${command.type}`);
+  }
+  mainWindow.webContents.send("menu:command", command);
+}
+
+function buildApplicationMenu() {
+  const template = [];
+  if (process.platform === "darwin") {
+    template.push({
+      label: app.name,
+      submenu: [
+        { role: "about", label: `关于${app.name}` },
+        { type: "separator" },
+        { role: "hide", label: `隐藏${app.name}` },
+        { role: "hideOthers", label: "隐藏其他" },
+        { role: "unhide", label: "全部显示" },
+        { type: "separator" },
+        { role: "quit", label: `退出${app.name}` }
+      ]
+    });
+  }
+  template.push(
+    {
+      label: "牌局",
+      submenu: [
+        {
+          id: "new-round",
+          label: "新牌局",
+          accelerator: "CmdOrCtrl+N",
+          enabled: menuState.canStartRound,
+          click: () => sendMenuCommand({ type: "newRound" })
+        },
+        {
+          id: "ai-suggestion",
+          label: "AI 建议",
+          accelerator: "CmdOrCtrl+I",
+          enabled: menuState.canAskAi,
+          click: () => sendMenuCommand({ type: "askAi" })
+        },
+        { type: "separator" },
+        {
+          id: "update-rules",
+          label: "更新玩法",
+          enabled: menuState.canUpdateRules,
+          click: () => sendMenuCommand({ type: "updateRules" })
+        },
+        {
+          label: "开局玩法",
+          enabled: menuState.rulesets.length > 0,
+          submenu: menuState.rulesets.map((ruleset, index) => ({
+            id: `ruleset-${index}`,
+            type: "radio",
+            label: ruleset.label,
+            checked: ruleset.id === menuState.currentRulesetId,
+            click: () => sendMenuCommand({ type: "changeRuleset", rulesetId: ruleset.id })
+          }))
+        }
+      ]
+    },
+    {
+      label: "视图",
+      submenu: [
+        {
+          id: "toggle-advisor",
+          type: "checkbox",
+          label: "显示策略面板",
+          accelerator: "CmdOrCtrl+Shift+A",
+          checked: menuState.advisorVisible,
+          click: (menuItem) => sendMenuCommand({ type: "setAdvisorVisible", visible: menuItem.checked })
+        },
+        { type: "separator" },
+        { role: "togglefullscreen", label: "切换全屏" }
+      ]
+    }
+  );
+  if (process.platform === "darwin") {
+    template.push({ role: "windowMenu", label: "窗口" });
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function synchronizeApplicationMenu() {
+  const menu = Menu.getApplicationMenu();
+  if (menu === null) {
+    throw new Error("application menu is not available");
+  }
+  menu.getMenuItemById("new-round").enabled = menuState.canStartRound;
+  menu.getMenuItemById("ai-suggestion").enabled = menuState.canAskAi;
+  menu.getMenuItemById("update-rules").enabled = menuState.canUpdateRules;
+  menu.getMenuItemById("toggle-advisor").checked = menuState.advisorVisible;
+  for (let index = 0; index < menuState.rulesets.length; index += 1) {
+    menu.getMenuItemById(`ruleset-${index}`).checked = menuState.rulesets[index].id === menuState.currentRulesetId;
+  }
+}
+
+function assertMenuState(payload) {
+  if (payload === null || typeof payload !== "object") {
+    throw new Error("menu state must be an object");
+  }
+  if (!Array.isArray(payload.rulesets)) {
+    throw new Error("menu state rulesets must be an array");
+  }
+  for (const ruleset of payload.rulesets) {
+    if (
+      ruleset === null
+      || typeof ruleset !== "object"
+      || typeof ruleset.id !== "string"
+      || ruleset.id.length === 0
+      || typeof ruleset.label !== "string"
+      || ruleset.label.length === 0
+    ) {
+      throw new Error("menu state contains an invalid ruleset");
+    }
+  }
+  if (payload.currentRulesetId !== null && typeof payload.currentRulesetId !== "string") {
+    throw new Error("menu state currentRulesetId must be a string or null");
+  }
+  for (const field of ["canStartRound", "canAskAi", "canUpdateRules", "advisorVisible"]) {
+    if (typeof payload[field] !== "boolean") {
+      throw new Error(`menu state ${field} must be boolean`);
+    }
+  }
+}
+
+ipcMain.on("menu:update-state", (_event, payload) => {
+  assertMenuState(payload);
+  const nextRulesets = payload.rulesets.map((ruleset) => ({ id: ruleset.id, label: ruleset.label }));
+  const rulesetsChanged = JSON.stringify(menuState.rulesets) !== JSON.stringify(nextRulesets);
+  menuState = {
+    rulesets: nextRulesets,
+    currentRulesetId: payload.currentRulesetId,
+    canStartRound: payload.canStartRound,
+    canAskAi: payload.canAskAi,
+    canUpdateRules: payload.canUpdateRules,
+    advisorVisible: payload.advisorVisible
+  };
+  if (rulesetsChanged) {
+    buildApplicationMenu();
+    return;
+  }
+  synchronizeApplicationMenu();
+});
 
 function healthCheck(url) {
   return new Promise((resolve, reject) => {
@@ -82,7 +237,7 @@ function createWindow() {
     height: 820,
     minWidth: 1080,
     minHeight: 720,
-    title: "BeiMi Mahjong AI Trainer",
+    title: "麻将 AI 训练",
     backgroundColor: "#10231f",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -198,6 +353,7 @@ async function captureWindowForVerification() {
 app.whenReady()
   .then(async () => {
     await waitForStrategyService(SERVICE_URL);
+    buildApplicationMenu();
     createWindow();
 
     app.on("activate", () => {
