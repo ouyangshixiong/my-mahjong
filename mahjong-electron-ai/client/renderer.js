@@ -103,6 +103,7 @@ const state = {
   awaitingPlayerDiscard: false,
   pendingHu: null,
   pendingClaim: null,
+  pendingPostWinGang: null,
   selfDrawEligible: false,
   turnWinContexts: [null, null, null, null],
   roundOver: true,
@@ -1079,7 +1080,7 @@ function clearPlayerResponseTimer() {
 }
 
 function startPlayerResponseTimer(target) {
-  if (target !== state.pendingHu && target !== state.pendingClaim) {
+  if (target !== state.pendingHu && target !== state.pendingClaim && target !== state.pendingPostWinGang) {
     throw new Error("响应倒计时目标不是当前待处理操作");
   }
   clearPlayerResponseTimer();
@@ -1088,7 +1089,11 @@ function startPlayerResponseTimer(target) {
   playActionSound("prompt");
 
   const tick = () => {
-    if (playerResponseTarget !== state.pendingHu && playerResponseTarget !== state.pendingClaim) {
+    if (
+      playerResponseTarget !== state.pendingHu
+      && playerResponseTarget !== state.pendingClaim
+      && playerResponseTarget !== state.pendingPostWinGang
+    ) {
       clearPlayerResponseTimer();
       return;
     }
@@ -1361,7 +1366,8 @@ function render() {
   }
 
   nodes.askAiButton.disabled = !canDiscard && !state.awaitingLackSuit && !state.awaitingExchange;
-  const gangOptions = ruleset !== null && canDiscard ? selfGangOptions(0) : [];
+  const canChooseSelfGang = canDiscard || state.pendingPostWinGang !== null;
+  const gangOptions = ruleset !== null && canChooseSelfGang ? selfGangOptions(0) : [];
   const gangOptionNodes = gangOptions.map((option) => {
     const optionNode = document.createElement("option");
     optionNode.value = gangOptionKey(option);
@@ -1376,7 +1382,9 @@ function render() {
   nodes.huButton.disabled = state.pendingHu === null && !canSelfHu;
   nodes.pengButton.disabled = state.pendingClaim === null || !state.pendingClaim.canPeng;
   nodes.gangButton.disabled = (state.pendingClaim === null || !state.pendingClaim.canGang) && gangOptions.length === 0;
-  nodes.passButton.disabled = state.pendingHu === null && state.pendingClaim === null;
+  nodes.passButton.disabled = state.pendingHu === null
+    && state.pendingClaim === null
+    && state.pendingPostWinGang === null;
   nodes.actionPanel.hidden = [nodes.huButton, nodes.pengButton, nodes.gangButton, nodes.passButton]
     .every((button) => button.disabled);
   nodes.newRoundButton.disabled = state.ruleset === null;
@@ -1435,6 +1443,9 @@ function roundStatusText() {
       .join("/");
     return `${state.ruleset.name}：${PLAYER_NAMES[state.pendingClaim.discarderIndex]}打出${tileLabel(state.pendingClaim.tile)}，可${actions}或过`;
   }
+  if (state.pendingPostWinGang !== null) {
+    return `${state.ruleset.name}：你已胡牌，可选择杠或过，超时后自动出牌`;
+  }
   if (state.postMeldAction === "peng" && state.awaitingPlayerDiscard) {
     return `${state.ruleset.name}：碰牌完成，请打出一张发光手牌`;
   }
@@ -1458,7 +1469,15 @@ function canSelfDiscard() {
     && !state.awaitingLackSuit
     && state.pendingHu === null
     && state.pendingClaim === null
+    && state.pendingPostWinGang === null
     && state.awaitingPlayerDiscard
+    && isPlayerActive(0);
+}
+
+function shouldAutoplaySelfAfterWin() {
+  const ruleset = currentRuleset();
+  return ruleset.gameplay.allowRepeatWins
+    && state.winCounts[0] > 0
     && isPlayerActive(0);
 }
 
@@ -1549,6 +1568,7 @@ async function startRound() {
   state.awaitingPlayerDiscard = false;
   state.pendingHu = null;
   state.pendingClaim = null;
+  state.pendingPostWinGang = null;
   state.selfDrawEligible = false;
   state.turnWinContexts = [null, null, null, null];
   state.roundOver = false;
@@ -1804,6 +1824,10 @@ async function advanceFrom(previousPlayerIndex) {
         previous = 0;
         continue;
       }
+      if (shouldAutoplaySelfAfterWin()) {
+        await continuePostWinSelfTurn(true, drawn);
+        return;
+      }
       state.awaitingPlayerDiscard = true;
       state.selfDrawEligible = true;
       render();
@@ -1907,7 +1931,7 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
       const forceWin = ruleset.gameplay.forceWinOnLastFourTiles && state.wall.length < 4;
       const winContext = discardWinContext(discardContext);
       const botWinnerIndices = candidates.filter((candidate) => candidate !== 0);
-      if (candidates.includes(0) && !forceWin) {
+      if (candidates.includes(0) && !forceWin && !shouldAutoplaySelfAfterWin()) {
         state.pendingHu = {
           type: "discard",
           discarderIndex,
@@ -1956,6 +1980,10 @@ async function resolveMeldClaims(discarderIndex, tile) {
   const canGang = ruleset.gameplay.allowGang && countHandTile(claimantIndex, tile) >= 3;
   const canPeng = ruleset.gameplay.allowPeng && countHandTile(claimantIndex, tile) >= 2;
   if (claimantIndex === 0) {
+    if (shouldAutoplaySelfAfterWin() && !canGang) {
+      await executePeng(0, discarderIndex, tile);
+      return true;
+    }
     state.pendingClaim = { discarderIndex, tile, canPeng, canGang };
     const actions = [canPeng ? "碰" : null, canGang ? "杠" : null]
       .filter((action) => action !== null)
@@ -2001,6 +2029,10 @@ async function executePeng(playerIndex, discarderIndex, tile) {
   if (playerIndex === 0) {
     state.awaitingPlayerDiscard = true;
     state.selfDrawEligible = false;
+    if (shouldAutoplaySelfAfterWin()) {
+      await continuePostWinSelfTurn(false, null);
+      return;
+    }
     render();
     await refreshAnalysis();
     return;
@@ -2200,6 +2232,10 @@ async function continueAfterGang(playerIndex) {
     return;
   }
   if (playerIndex === 0) {
+    if (shouldAutoplaySelfAfterWin()) {
+      await continuePostWinSelfTurn(true, drawn);
+      return;
+    }
     state.postMeldAction = "gang";
     state.awaitingPlayerDiscard = true;
     state.selfDrawEligible = true;
@@ -2215,6 +2251,33 @@ async function continueAfterGang(playerIndex) {
     return;
   }
   await performBotDiscard(playerIndex, true, drawn);
+}
+
+async function continuePostWinSelfTurn(allowHu, drawnTile) {
+  if (!shouldAutoplaySelfAfterWin()) {
+    throw new Error("当前不是胡牌后自动行牌状态");
+  }
+  state.postMeldAction = null;
+  state.awaitingPlayerDiscard = false;
+  state.selfDrawEligible = allowHu;
+  render();
+  await sleep(220);
+
+  if (allowHu && isWinningHandLocal(state.hands[0], currentRuleset(), state.lackSuits[0])) {
+    await performBotDiscard(0, true, drawnTile);
+    return;
+  }
+
+  if (selfGangOptions(0).length > 0) {
+    state.pendingPostWinGang = { allowHu, drawnTile };
+    state.awaitingPlayerDiscard = true;
+    logMessage("你已胡牌，当前可杠；请主动选择杠或过，15 秒后自动出牌。");
+    render();
+    startPlayerResponseTimer(state.pendingPostWinGang);
+    return;
+  }
+
+  await performBotDiscard(0, allowHu, drawnTile);
 }
 
 async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
@@ -2448,7 +2511,7 @@ async function claimGang() {
     await executeDiscardGang(0, claim.discarderIndex, claim.tile);
     return;
   }
-  if (!canSelfDiscard()) {
+  if (!canSelfDiscard() && state.pendingPostWinGang === null) {
     throw new Error("当前不能杠牌");
   }
   const options = selfGangOptions(0);
@@ -2459,6 +2522,10 @@ async function claimGang() {
   const option = options.find((candidate) => gangOptionKey(candidate) === selectedKey);
   if (option === undefined) {
     throw new Error("选择的杠牌选项已失效");
+  }
+  if (state.pendingPostWinGang !== null) {
+    clearPlayerResponseTimer();
+    state.pendingPostWinGang = null;
   }
   await executeSelfGang(0, option);
 }
@@ -2522,6 +2589,18 @@ async function passAction(automatic = false) {
       : `你选择过${tileLabel(claim.tile)}。`);
     render();
     await advanceFrom(claim.discarderIndex);
+    return;
+  }
+  if (state.pendingPostWinGang !== null) {
+    const pendingPostWinGang = state.pendingPostWinGang;
+    clearPlayerResponseTimer();
+    state.pendingPostWinGang = null;
+    state.awaitingPlayerDiscard = false;
+    logMessage(automatic
+      ? "你的杠操作超时，自动出牌。"
+      : "你选择不杠，自动出牌。");
+    render();
+    await performBotDiscard(0, pendingPostWinGang.allowHu, pendingPostWinGang.drawnTile);
     return;
   }
   throw new Error("当前没有可跳过的操作");
@@ -2602,6 +2681,7 @@ async function registerWins(entries, settlement) {
   }
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
+  state.pendingPostWinGang = null;
   if (ruleset.gameplay.roundEndMode === "winnerLimitOrWallEmpty") {
     if (!ruleset.gameplay.continueAfterWin || state.winners.filter(Boolean).length >= ruleset.gameplay.maxWinners) {
       endRound("牌局结束。");
@@ -2794,6 +2874,7 @@ function endRound(message) {
   state.awaitingPlayerDiscard = false;
   state.pendingHu = null;
   state.pendingClaim = null;
+  state.pendingPostWinGang = null;
   state.selfDrawEligible = false;
   state.postMeldAction = null;
   logMessage(message);
