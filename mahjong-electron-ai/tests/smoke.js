@@ -131,7 +131,10 @@ async function main() {
       "client/renderer.js",
       "client/styles.css",
       "assets/img/table-bg.jpg",
-      "assets/sounds/nv/hu.mp3"
+      "assets/sounds/nv/hu.mp3",
+      "assets/sounds/nv/peng.mp3",
+      "assets/sounds/nv/gang.mp3",
+      "assets/sounds/action-prompt.wav"
     ]) {
       assert.equal(fs.existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} must exist`);
     }
