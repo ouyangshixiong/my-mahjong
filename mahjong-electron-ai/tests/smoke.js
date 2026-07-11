@@ -20,9 +20,19 @@ async function main() {
     assert.equal(health.ok, true);
 
     const rulesets = await fetchJson(`${baseUrl}/rulesets`);
-    assert.equal(rulesets.rulesets.length, 2);
+    assert.equal(rulesets.defaultRulesetId, "sichuan-xueliu");
+    assert.equal(rulesets.rulesets.length, 3);
+    assert.equal(rulesets.rulesets[0].id, "sichuan-xueliu");
+    assert.ok(rulesets.rulesets.some((ruleset) => ruleset.id === "sichuan-xueliu"));
     assert.ok(rulesets.rulesets.some((ruleset) => ruleset.id === "sichuan-xuezhan"));
     assert.ok(rulesets.rulesets.some((ruleset) => ruleset.id === "hongzhong"));
+
+    const xueliu = await fetchJson(`${baseUrl}/rulesets/sichuan-xueliu`);
+    assert.equal(xueliu.ruleset.gameplay.continueAfterWin, true);
+    assert.equal(xueliu.ruleset.gameplay.maxWinners, 0);
+    assert.equal(xueliu.ruleset.gameplay.winnerExitsAfterWin, false);
+    assert.equal(xueliu.ruleset.gameplay.allowRepeatWins, true);
+    assert.equal(xueliu.ruleset.gameplay.roundEndMode, "wallEmpty");
 
     const xuezhan = await fetchJson(`${baseUrl}/rulesets/sichuan-xuezhan`);
     assert.equal(xuezhan.ruleset.tileCounts.z5, undefined);
@@ -36,6 +46,11 @@ async function main() {
     assert.equal(xuezhan.ruleset.gameplay.allowPeng, true);
     assert.equal(xuezhan.ruleset.gameplay.allowGang, true);
     assert.equal(xuezhan.ruleset.gameplay.allowRobGang, true);
+    assert.equal(xuezhan.ruleset.gameplay.continueAfterWin, true);
+    assert.equal(xuezhan.ruleset.gameplay.maxWinners, 3);
+    assert.equal(xuezhan.ruleset.gameplay.winnerExitsAfterWin, true);
+    assert.equal(xuezhan.ruleset.gameplay.allowRepeatWins, false);
+    assert.equal(xuezhan.ruleset.gameplay.roundEndMode, "winnerLimitOrWallEmpty");
     assert.equal(xuezhan.ruleset.gameplay.gangPaoTransferMode, "refund");
     assert.equal(xuezhan.ruleset.scoring.aggregation, "sum");
 
@@ -144,8 +159,19 @@ async function main() {
       ...Array.from({ length: 7 }, (_value, index) => `z${index + 1}`)
     ];
     for (const tile of tileAssetIds) {
-      const relativePath = `assets/img/tiles/${tile}.svg`;
-      assert.equal(fs.existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} must exist`);
+      const imagePath = `assets/img/tiles/${tile}.svg`;
+      assert.equal(fs.existsSync(path.join(projectRoot, imagePath)), true, `${imagePath} must exist`);
+    }
+
+    const tileSoundCodes = [
+      ...Array.from({ length: 9 }, (_value, index) => index + 1),
+      ...Array.from({ length: 9 }, (_value, index) => index + 11),
+      ...Array.from({ length: 9 }, (_value, index) => index + 21),
+      ...Array.from({ length: 7 }, (_value, index) => (index + 3) * 10 + 1)
+    ];
+    for (const soundCode of tileSoundCodes) {
+      const soundPath = `assets/sounds/nv/${soundCode}.mp3`;
+      assert.equal(fs.existsSync(path.join(projectRoot, soundPath)), true, `${soundPath} must exist`);
     }
   } finally {
     await closeServer(server);

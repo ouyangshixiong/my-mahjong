@@ -2,7 +2,7 @@ const http = require("node:http");
 const { URL } = require("node:url");
 const { analyzeHand, chooseExchangeTiles, chooseLackSuit, scoreHand, TILE_DEFS } = require("./mahjong");
 const { recommendDiscard } = require("./ai");
-const { getRuleset, getRulesets } = require("./rulesets");
+const { DEFAULT_RULESET_ID, getRuleset, getRulesets } = require("./rulesets");
 
 function readRequestBody(request) {
   return new Promise((resolve, reject) => {
@@ -61,7 +61,7 @@ function createServer() {
       }
 
       if (request.method === "GET" && url.pathname === "/rulesets") {
-        sendJson(response, 200, { rulesets: getRulesets() });
+        sendJson(response, 200, { defaultRulesetId: DEFAULT_RULESET_ID, rulesets: getRulesets() });
         return;
       }
 

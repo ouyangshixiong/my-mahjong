@@ -10,19 +10,31 @@ function tileCounts(tileIds) {
   return Object.fromEntries(tileIds.map((tile) => [tile, 4]));
 }
 
+const SICHUAN_SCORING_PATTERNS = Object.freeze([
+  Object.freeze({ id: "baseHu", name: "平胡", fan: 0, type: "base" }),
+  Object.freeze({ id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" }),
+  Object.freeze({ id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }),
+  Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" })
+]);
+
+const DEFAULT_RULESET_ID = "sichuan-xueliu";
+
 const RULESETS = Object.freeze([
   Object.freeze({
-    id: "sichuan-xuezhan",
-    version: 7,
-    updatedAt: "2026-07-10T00:00:00+08:00",
-    name: "四川麻将血战",
-    description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
+    id: "sichuan-xueliu",
+    version: 1,
+    updatedAt: "2026-07-11T00:00:00+08:00",
+    name: "四川麻将血流成河",
+    description: "三门 108 张，先定缺再换三张；胡牌后不退出，可重复胡牌并即时结算，直到牌墙摸完。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
     gameplay: Object.freeze({
       initialHandSize: 13,
       dealerDraws: 14,
       continueAfterWin: true,
-      maxWinners: 3,
+      maxWinners: 0,
+      winnerExitsAfterWin: false,
+      allowRepeatWins: true,
+      roundEndMode: "wallEmpty",
       requiresExchangeThree: true,
       dingqueBeforeExchange: true,
       exchangeUsesDingqueSuit: true,
@@ -52,12 +64,54 @@ const RULESETS = Object.freeze([
       baseFan: 0,
       maxFan: 3,
       selfDrawAddsBase: true,
-      patterns: Object.freeze([
-        Object.freeze({ id: "baseHu", name: "平胡", fan: 0, type: "base" }),
-        Object.freeze({ id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" }),
-        Object.freeze({ id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }),
-        Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" })
-      ])
+      patterns: SICHUAN_SCORING_PATTERNS
+    })
+  }),
+  Object.freeze({
+    id: "sichuan-xuezhan",
+    version: 7,
+    updatedAt: "2026-07-10T00:00:00+08:00",
+    name: "四川麻将血战",
+    description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
+    tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
+    gameplay: Object.freeze({
+      initialHandSize: 13,
+      dealerDraws: 14,
+      continueAfterWin: true,
+      maxWinners: 3,
+      winnerExitsAfterWin: true,
+      allowRepeatWins: false,
+      roundEndMode: "winnerLimitOrWallEmpty",
+      requiresExchangeThree: true,
+      dingqueBeforeExchange: true,
+      exchangeUsesDingqueSuit: true,
+      exchangeTileCount: 3,
+      exchangeSameSuit: true,
+      exchangeAllowMixedFillWhenInsufficient: true,
+      requiresDingque: true,
+      mustDiscardDingqueFirst: true,
+      allowChi: false,
+      allowPeng: true,
+      allowGang: true,
+      allowRobGang: true,
+      allowDiscardWin: true,
+      allowMultipleWinnersOnDiscard: true,
+      forceWinOnLastFourTiles: true,
+      settleGangImmediately: true,
+      refundGangOnDrawNotReady: true,
+      gangPaoTransferMode: "refund",
+      settleFlowerPigOnDraw: true,
+      settleReadyHandsOnDraw: true,
+      wildcardTile: null,
+      honorTilesEnabled: false,
+      redCenterEnabled: false
+    }),
+    scoring: Object.freeze({
+      aggregation: "sum",
+      baseFan: 0,
+      maxFan: 3,
+      selfDrawAddsBase: true,
+      patterns: SICHUAN_SCORING_PATTERNS
     })
   }),
   Object.freeze({
@@ -75,6 +129,9 @@ const RULESETS = Object.freeze([
       dealerDraws: 14,
       continueAfterWin: false,
       maxWinners: 1,
+      winnerExitsAfterWin: true,
+      allowRepeatWins: false,
+      roundEndMode: "winnerLimitOrWallEmpty",
       requiresExchangeThree: false,
       dingqueBeforeExchange: false,
       exchangeUsesDingqueSuit: false,
@@ -139,6 +196,9 @@ function assertRulesetShape(ruleset) {
     "dealerDraws",
     "continueAfterWin",
     "maxWinners",
+    "winnerExitsAfterWin",
+    "allowRepeatWins",
+    "roundEndMode",
     "requiresExchangeThree",
     "dingqueBeforeExchange",
     "exchangeUsesDingqueSuit",
@@ -168,6 +228,8 @@ function assertRulesetShape(ruleset) {
   }
   for (const field of [
     "continueAfterWin",
+    "winnerExitsAfterWin",
+    "allowRepeatWins",
     "requiresExchangeThree",
     "dingqueBeforeExchange",
     "exchangeUsesDingqueSuit",
@@ -197,6 +259,18 @@ function assertRulesetShape(ruleset) {
     if (!Number.isInteger(ruleset.gameplay[field]) || ruleset.gameplay[field] < 0) {
       throw new Error(`ruleset ${ruleset.id} gameplay.${field} must be a non-negative integer`);
     }
+  }
+  if (!["winnerLimitOrWallEmpty", "wallEmpty"].includes(ruleset.gameplay.roundEndMode)) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.roundEndMode is invalid`);
+  }
+  if (ruleset.gameplay.roundEndMode === "wallEmpty" && ruleset.gameplay.maxWinners !== 0) {
+    throw new Error(`ruleset ${ruleset.id} wall-empty mode must use maxWinners 0`);
+  }
+  if (ruleset.gameplay.roundEndMode === "winnerLimitOrWallEmpty" && ruleset.gameplay.maxWinners < 1) {
+    throw new Error(`ruleset ${ruleset.id} winner-limit mode must use a positive maxWinners`);
+  }
+  if (ruleset.gameplay.allowRepeatWins === ruleset.gameplay.winnerExitsAfterWin) {
+    throw new Error(`ruleset ${ruleset.id} repeat-win and winner-exit settings conflict`);
   }
   if (ruleset.gameplay.requiresExchangeThree && ruleset.gameplay.exchangeTileCount !== 3) {
     throw new Error(`ruleset ${ruleset.id} exchange-three must exchange exactly 3 tiles`);
@@ -275,6 +349,7 @@ function getAllowedTileIds(ruleset) {
 }
 
 module.exports = {
+  DEFAULT_RULESET_ID,
   getRulesets,
   getRuleset,
   getAllowedTileIds,

@@ -39,6 +39,12 @@ const TILE_IDS = Object.freeze(TILE_DEFS.map((tile) => tile.id));
 const TILE_BY_ID = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => [tile.id, tile])));
 const TILE_ORDER = Object.freeze(Object.fromEntries(TILE_IDS.map((tile, index) => [tile, index])));
 const PLAYER_NAMES = Object.freeze(["你", "上家", "对家", "下家"]);
+const PLAYER_VOICE_PROFILES = Object.freeze([
+  Object.freeze({ name: "原声", playbackRate: 1 }),
+  Object.freeze({ name: "低沉", playbackRate: 0.86 }),
+  Object.freeze({ name: "清亮", playbackRate: 1.12 }),
+  Object.freeze({ name: "偏低", playbackRate: 0.95 })
+]);
 const SUITED_SUITS = Object.freeze(["m", "p", "s"]);
 const SUIT_LABELS = Object.freeze({ m: "万", p: "筒", s: "条" });
 const EXCHANGE_DIRECTIONS = Object.freeze(["clockwise", "counterclockwise", "across"]);
@@ -59,11 +65,23 @@ const ACTION_SOUND_LABELS = Object.freeze({
   gang: "杠",
   prompt: "操作提示"
 });
+const TILE_SOUND_PATHS = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => {
+  const rank = Number.parseInt(tile.id.slice(1), 10);
+  const soundCode = tile.suitKey === "m"
+    ? rank + 10
+    : tile.suitKey === "p"
+      ? rank + 20
+      : tile.suitKey === "s"
+        ? rank
+        : (rank + 2) * 10 + 1;
+  return [tile.id, `../assets/sounds/nv/${soundCode}.mp3`];
+})));
 
 const state = {
   rulesets: [],
   ruleset: null,
   wall: [],
+  wallInitialCount: 0,
   hands: [[], [], [], []],
   discards: [[], [], [], []],
   melds: [[], [], [], []],
@@ -72,7 +90,10 @@ const state = {
   nextGangEventId: 1,
   pendingGangEventIds: [[], [], [], []],
   winners: [false, false, false, false],
-  winningHands: [null, null, null, null],
+  winCounts: [0, 0, 0, 0],
+  winningHands: [[], [], [], []],
+  wonTiles: [[], [], [], []],
+  turnDrawnTiles: [null, null, null, null],
   lackSuits: [null, null, null, null],
   awaitingExchange: false,
   exchangeSelections: [[], [], [], []],
@@ -101,11 +122,16 @@ const meldEffectTimers = [null, null, null, null];
 const nodes = {
   roundStatus: mustGet("roundStatus"),
   wallCount: mustGet("wallCount"),
+  player0Wall: mustGet("player0Wall"),
+  player1Wall: mustGet("player1Wall"),
+  player2Wall: mustGet("player2Wall"),
+  player3Wall: mustGet("player3Wall"),
   messageLog: mustGet("messageLog"),
   selfHand: mustGet("selfHand"),
   selfRiver: mustGet("selfRiver"),
   selfMelds: mustGet("selfMelds"),
   selfScore: mustGet("selfScore"),
+  selfWinCount: mustGet("selfWinCount"),
   player1Hand: mustGet("player1Hand"),
   player2Hand: mustGet("player2Hand"),
   player3Hand: mustGet("player3Hand"),
@@ -118,6 +144,9 @@ const nodes = {
   player1Score: mustGet("player1Score"),
   player2Score: mustGet("player2Score"),
   player3Score: mustGet("player3Score"),
+  player1WinCount: mustGet("player1WinCount"),
+  player2WinCount: mustGet("player2WinCount"),
+  player3WinCount: mustGet("player3WinCount"),
   selfLackSuit: mustGet("selfLackSuit"),
   player1LackSuit: mustGet("player1LackSuit"),
   player2LackSuit: mustGet("player2LackSuit"),
@@ -133,6 +162,7 @@ const nodes = {
   updateRulesButton: mustGet("updateRulesButton"),
   newRoundButton: mustGet("newRoundButton"),
   askAiButton: mustGet("askAiButton"),
+  actionPanel: mustGet("actionPanel"),
   huButton: mustGet("huButton"),
   pengButton: mustGet("pengButton"),
   gangSelect: mustGet("gangSelect"),
@@ -146,6 +176,13 @@ const actionSounds = Object.freeze(Object.fromEntries(
     const audio = new Audio(path);
     audio.preload = "auto";
     return [action, audio];
+  })
+));
+const tileSounds = Object.freeze(Object.fromEntries(
+  Object.entries(TILE_SOUND_PATHS).map(([tile, path]) => {
+    const audio = new Audio(path);
+    audio.preload = "auto";
+    return [tile, audio];
   })
 ));
 
@@ -175,6 +212,11 @@ function assertRuleset(ruleset) {
   }
   for (const field of [
     "requiresExchangeThree",
+    "continueAfterWin",
+    "maxWinners",
+    "winnerExitsAfterWin",
+    "allowRepeatWins",
+    "roundEndMode",
     "dingqueBeforeExchange",
     "exchangeUsesDingqueSuit",
     "exchangeTileCount",
@@ -209,6 +251,24 @@ function assertRuleset(ruleset) {
   }
   if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
     throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);
+  }
+  if (typeof ruleset.gameplay.continueAfterWin !== "boolean") {
+    throw new Error(`ruleset ${ruleset.id} gameplay.continueAfterWin must be boolean`);
+  }
+  if (!Number.isInteger(ruleset.gameplay.maxWinners) || ruleset.gameplay.maxWinners < 0) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.maxWinners must be a non-negative integer`);
+  }
+  if (typeof ruleset.gameplay.winnerExitsAfterWin !== "boolean") {
+    throw new Error(`ruleset ${ruleset.id} gameplay.winnerExitsAfterWin must be boolean`);
+  }
+  if (typeof ruleset.gameplay.allowRepeatWins !== "boolean") {
+    throw new Error(`ruleset ${ruleset.id} gameplay.allowRepeatWins must be boolean`);
+  }
+  if (!["winnerLimitOrWallEmpty", "wallEmpty"].includes(ruleset.gameplay.roundEndMode)) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.roundEndMode is invalid`);
+  }
+  if (ruleset.gameplay.allowRepeatWins === ruleset.gameplay.winnerExitsAfterWin) {
+    throw new Error(`ruleset ${ruleset.id} repeat-win and winner-exit settings conflict`);
   }
 }
 
@@ -415,7 +475,8 @@ function exchangeHandsLocal(hands, selections, direction, ruleset, lackSuits) {
 function visibleTiles() {
   return [
     ...state.discards.flat(),
-    ...state.melds.flat().flatMap((meld) => meld.tiles)
+    ...state.melds.flat().flatMap((meld) => meld.tiles),
+    ...state.wonTiles.flat()
   ];
 }
 
@@ -510,7 +571,7 @@ function countHandTile(playerIndex, tile) {
 
 function canUseExposedMeld(playerIndex, tile) {
   const ruleset = currentRuleset();
-  if (state.winners[playerIndex]) {
+  if (!isPlayerActive(playerIndex)) {
     return false;
   }
   if (!ruleset.gameplay.requiresDingque) {
@@ -524,7 +585,7 @@ function canUseExposedMeld(playerIndex, tile) {
 
 function selfGangOptions(playerIndex) {
   const ruleset = currentRuleset();
-  if (!ruleset.gameplay.allowGang || state.winners[playerIndex]) {
+  if (!ruleset.gameplay.allowGang || !isPlayerActive(playerIndex)) {
     return [];
   }
   if (
@@ -584,7 +645,17 @@ function removeLastDiscard(discarderIndex, tile) {
 }
 
 function activePlayerIndices() {
-  return [0, 1, 2, 3].filter((playerIndex) => !state.winners[playerIndex]);
+  return [0, 1, 2, 3].filter(isPlayerActive);
+}
+
+function isPlayerActive(playerIndex) {
+  const ruleset = currentRuleset();
+  return !ruleset.gameplay.winnerExitsAfterWin || !state.winners[playerIndex];
+}
+
+function canPlayerWin(playerIndex) {
+  const ruleset = currentRuleset();
+  return ruleset.gameplay.allowRepeatWins || !state.winners[playerIndex];
 }
 
 function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
@@ -838,7 +909,7 @@ function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext) {
       });
     }
   }
-  if (ruleset.id === "sichuan-xuezhan") {
+  if (ruleset.gameplay.requiresDingque) {
     const fullTiles = [...hand, ...melds.flatMap((meld) => meld.tiles)];
     const fullCounts = countTilesLocal(fullTiles, ruleset);
     const rootCount = Object.values(fullCounts).filter((count) => count === 4).length;
@@ -925,6 +996,41 @@ function playActionSound(action) {
   });
 }
 
+function playTileSound(playerIndex, tile) {
+  const voiceProfile = PLAYER_VOICE_PROFILES[playerIndex];
+  if (voiceProfile === undefined) {
+    throw new Error(`未知玩家声音：${playerIndex}`);
+  }
+  const audio = tileSounds[tile];
+  if (audio === undefined) {
+    throw new Error(`未知牌声音：${tile}`);
+  }
+  audio.pause();
+  audio.currentTime = 0;
+  audio.preservesPitch = false;
+  audio.playbackRate = voiceProfile.playbackRate;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
+    };
+    const handleEnded = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error(`${PLAYER_NAMES[playerIndex]}${voiceProfile.name}声线播放${tileLabel(tile)}失败，媒体错误码：${audio.error.code}`));
+    };
+    audio.addEventListener("ended", handleEnded, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    audio.play().catch((error) => {
+      cleanup();
+      reject(new Error(`${PLAYER_NAMES[playerIndex]}${voiceProfile.name}声线播放${tileLabel(tile)}失败：${error.message}`));
+    });
+  });
+}
+
 function clearMeldEffects() {
   for (let playerIndex = 0; playerIndex < meldEffectTimers.length; playerIndex += 1) {
     if (meldEffectTimers[playerIndex] !== null) {
@@ -966,6 +1072,7 @@ function clearPlayerResponseTimer() {
   playerResponseDeadline = null;
   playerResponseTarget = null;
   nodes.passButton.textContent = "过";
+  delete nodes.passButton.dataset.countdown;
 }
 
 function startPlayerResponseTimer(target) {
@@ -984,12 +1091,13 @@ function startPlayerResponseTimer(target) {
     }
     const remainingMs = playerResponseDeadline - Date.now();
     const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-    nodes.passButton.textContent = `过 (${remainingSeconds})`;
+    nodes.passButton.dataset.countdown = String(remainingSeconds);
     if (remainingMs <= 0) {
       playerResponseTimer = null;
       playerResponseDeadline = null;
       playerResponseTarget = null;
       nodes.passButton.textContent = "过";
+      delete nodes.passButton.dataset.countdown;
       runAsync(() => passAction(true));
       return;
     }
@@ -1074,6 +1182,45 @@ function createTileBack() {
   return element;
 }
 
+function createWallTile() {
+  const element = document.createElement("div");
+  element.className = "wall-tile";
+  return element;
+}
+
+function wallSegmentCounts() {
+  if (!Number.isInteger(state.wallInitialCount) || state.wallInitialCount < 0) {
+    throw new Error(`牌墙初始张数非法：${state.wallInitialCount}`);
+  }
+  if (state.wall.length > state.wallInitialCount) {
+    throw new Error("剩余牌墙不能多于牌墙初始张数");
+  }
+  const baseCount = Math.floor(state.wallInitialCount / 4);
+  const initialCounts = Array.from({ length: 4 }, (_value, index) => (
+    baseCount + (index < state.wallInitialCount % 4 ? 1 : 0)
+  ));
+  let consumed = state.wallInitialCount - state.wall.length;
+  const drawOrder = [0, 3, 2, 1];
+  for (const playerIndex of drawOrder) {
+    const removed = Math.min(consumed, initialCounts[playerIndex]);
+    initialCounts[playerIndex] -= removed;
+    consumed -= removed;
+  }
+  if (consumed !== 0) {
+    throw new Error(`牌墙消耗张数未分配完：${consumed}`);
+  }
+  return initialCounts;
+}
+
+function renderWall() {
+  const counts = wallSegmentCounts();
+  for (let playerIndex = 0; playerIndex < 4; playerIndex += 1) {
+    const wallNode = nodes[`player${playerIndex}Wall`];
+    wallNode.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}前方剩余 ${counts[playerIndex]} 张墙牌`);
+    replaceChildren(wallNode, Array.from({ length: counts[playerIndex] }, createWallTile));
+  }
+}
+
 function createMeld(meld, playerIndex, meldIndex) {
   if (meld === null || typeof meld !== "object" || !["peng", "gang"].includes(meld.type)) {
     throw new Error("Invalid exposed meld");
@@ -1102,6 +1249,7 @@ function replaceChildren(node, children) {
 function render() {
   const ruleset = state.ruleset;
   nodes.wallCount.textContent = String(state.wall.length);
+  renderWall();
   nodes.rulesetBadge.textContent = ruleset === null ? "玩法未加载" : `${ruleset.name} v${ruleset.version}`;
   nodes.roundStatus.textContent = roundStatusText();
   nodes.roundStatus.classList.toggle("next-action-status", state.postMeldAction !== null && state.awaitingPlayerDiscard);
@@ -1191,6 +1339,10 @@ function render() {
   nodes.player1Score.textContent = `${state.scores[1]}分`;
   nodes.player2Score.textContent = `${state.scores[2]}分`;
   nodes.player3Score.textContent = `${state.scores[3]}分`;
+  nodes.selfWinCount.textContent = state.winCounts[0] === 0 ? "" : `· 胡×${state.winCounts[0]}`;
+  nodes.player1WinCount.textContent = state.winCounts[1] === 0 ? "" : `· 胡×${state.winCounts[1]}`;
+  nodes.player2WinCount.textContent = state.winCounts[2] === 0 ? "" : `· 胡×${state.winCounts[2]}`;
+  nodes.player3WinCount.textContent = state.winCounts[3] === 0 ? "" : `· 胡×${state.winCounts[3]}`;
   nodes.exchangePanel.hidden = !state.awaitingExchange;
   nodes.exchangeSelectionStatus.textContent = ruleset === null
     ? "已选 0 / 0"
@@ -1213,10 +1365,15 @@ function render() {
   });
   replaceChildren(nodes.gangSelect, gangOptionNodes);
   nodes.gangSelect.hidden = state.pendingClaim !== null || gangOptions.length <= 1;
-  nodes.huButton.disabled = state.pendingHu === null && (!canDiscard || !state.selfDrawEligible);
+  const canSelfHu = canDiscard
+    && state.selfDrawEligible
+    && isWinningHandLocal(state.hands[0], ruleset, state.lackSuits[0]);
+  nodes.huButton.disabled = state.pendingHu === null && !canSelfHu;
   nodes.pengButton.disabled = state.pendingClaim === null || !state.pendingClaim.canPeng;
   nodes.gangButton.disabled = (state.pendingClaim === null || !state.pendingClaim.canGang) && gangOptions.length === 0;
   nodes.passButton.disabled = state.pendingHu === null && state.pendingClaim === null;
+  nodes.actionPanel.hidden = [nodes.huButton, nodes.pengButton, nodes.gangButton, nodes.passButton]
+    .every((button) => button.disabled);
   nodes.newRoundButton.disabled = state.ruleset === null;
   nodes.updateRulesButton.disabled = false;
   nodes.rulesetSelect.disabled = state.rulesets.length === 0;
@@ -1268,8 +1425,10 @@ function roundStatusText() {
   if (state.postMeldAction === "gang" && state.awaitingPlayerDiscard) {
     return `${state.ruleset.name}：杠后已补牌，可胡、再杠或打出发光手牌`;
   }
-  const winnerNames = PLAYER_NAMES.filter((_name, index) => state.winners[index]);
-  const winnerSuffix = winnerNames.length > 0 ? `，已胡：${winnerNames.join("、")}` : "";
+  const winnerSummary = PLAYER_NAMES
+    .map((name, index) => state.winCounts[index] > 0 ? `${name}×${state.winCounts[index]}` : null)
+    .filter((item) => item !== null);
+  const winnerSuffix = winnerSummary.length > 0 ? `，已胡：${winnerSummary.join("、")}` : "";
   if (state.awaitingPlayerDiscard) {
     return `${state.ruleset.name}：轮到你出牌${winnerSuffix}`;
   }
@@ -1284,7 +1443,7 @@ function canSelfDiscard() {
     && state.pendingHu === null
     && state.pendingClaim === null
     && state.awaitingPlayerDiscard
-    && !state.winners[0];
+    && isPlayerActive(0);
 }
 
 async function loadRulesets() {
@@ -1301,7 +1460,14 @@ async function loadRulesets() {
   populateRulesetSelect();
 
   if (previousRulesetId === null) {
-    state.ruleset = state.rulesets[0];
+    if (typeof response.defaultRulesetId !== "string" || response.defaultRulesetId.length === 0) {
+      throw new Error("server returned no defaultRulesetId");
+    }
+    const defaultRuleset = state.rulesets.find((ruleset) => ruleset.id === response.defaultRulesetId);
+    if (defaultRuleset === undefined) {
+      throw new Error(`server default ruleset is unavailable: ${response.defaultRulesetId}`);
+    }
+    state.ruleset = defaultRuleset;
     nodes.rulesetSelect.value = state.ruleset.id;
   } else {
     const updated = state.rulesets.find((ruleset) => ruleset.id === previousRulesetId);
@@ -1354,7 +1520,10 @@ async function startRound() {
   state.nextGangEventId = 1;
   state.pendingGangEventIds = [[], [], [], []];
   state.winners = [false, false, false, false];
-  state.winningHands = [null, null, null, null];
+  state.winCounts = [0, 0, 0, 0];
+  state.winningHands = [[], [], [], []];
+  state.wonTiles = [[], [], [], []];
+  state.turnDrawnTiles = [null, null, null, null];
   state.lackSuits = [null, null, null, null];
   state.awaitingExchange = false;
   state.exchangeSelections = [[], [], [], []];
@@ -1377,9 +1546,7 @@ async function startRound() {
       drawTile(playerIndex);
     }
   }
-  for (let drawIndex = ruleset.gameplay.initialHandSize; drawIndex < ruleset.gameplay.dealerDraws; drawIndex += 1) {
-    drawTile(0);
-  }
+  state.wallInitialCount = state.wall.length;
 
   logMessage(`新牌局开始：${ruleset.description}`);
   if (ruleset.gameplay.dingqueBeforeExchange) {
@@ -1443,6 +1610,14 @@ async function beginExchangePhase() {
 }
 
 async function beginPlayPhase() {
+  const ruleset = currentRuleset();
+  for (let drawIndex = ruleset.gameplay.initialHandSize; drawIndex < ruleset.gameplay.dealerDraws; drawIndex += 1) {
+    const drawn = drawTile(0);
+    if (drawn === null) {
+      throw new Error("庄家开局摸牌时牌墙已空");
+    }
+    state.turnDrawnTiles[0] = drawn;
+  }
   state.awaitingPlayerDiscard = true;
   state.selfDrawEligible = true;
   render();
@@ -1564,12 +1739,14 @@ async function discardSelf(tile) {
   state.postMeldAction = null;
   const discardContext = state.turnWinContexts[0];
   state.turnWinContexts[0] = null;
+  state.turnDrawnTiles[0] = null;
   state.selfDrawEligible = false;
   state.hands[0] = removeOne(state.hands[0], tile);
   state.discards[0].push(tile);
   state.awaitingPlayerDiscard = false;
   logMessage(`你打出 ${tileLabel(tile)}。`);
   render();
+  await playTileSound(0, tile);
   const turnCaptured = await resolveDiscardActions(0, tile, discardContext);
   if (!state.roundOver && !turnCaptured) {
     await advanceFrom(0);
@@ -1591,6 +1768,7 @@ async function advanceFrom(previousPlayerIndex) {
       await finishDrawRound();
       return;
     }
+    state.turnDrawnTiles[playerIndex] = drawn;
     state.turnWinContexts[playerIndex] = state.wall.length === 0 ? "haiDi" : null;
 
     if (playerIndex === 0) {
@@ -1603,6 +1781,7 @@ async function advanceFrom(previousPlayerIndex) {
         await registerWins([{
           playerIndex: 0,
           winningHand: state.hands[0],
+          winningTile: drawn,
           message: "最后四张强制自摸胡牌。",
           winContext: state.turnWinContexts[0]
         }], { type: "selfDraw", payerIndex: null });
@@ -1637,6 +1816,7 @@ async function advanceFrom(previousPlayerIndex) {
       await registerWins([{
         playerIndex,
         winningHand: state.hands[playerIndex],
+        winningTile: drawn,
         message: `${PLAYER_NAMES[playerIndex]} 自摸胡牌。`,
         winContext: state.turnWinContexts[playerIndex]
       }], { type: "selfDraw", payerIndex: null });
@@ -1650,11 +1830,12 @@ async function advanceFrom(previousPlayerIndex) {
     }
     const discardContext = state.turnWinContexts[playerIndex];
     state.turnWinContexts[playerIndex] = null;
+    state.turnDrawnTiles[playerIndex] = null;
     state.hands[playerIndex] = removeOne(state.hands[playerIndex], decision.discard);
     state.discards[playerIndex].push(decision.discard);
     logMessage(`${PLAYER_NAMES[playerIndex]} 打出 ${decision.discardLabel}。`);
     render();
-    await sleep(220);
+    await playTileSound(playerIndex, decision.discard);
     const turnCaptured = await resolveDiscardActions(playerIndex, decision.discard, discardContext);
     if (turnCaptured) {
       return;
@@ -1666,7 +1847,7 @@ async function advanceFrom(previousPlayerIndex) {
 function nextActivePlayer(playerIndex) {
   for (let offset = 1; offset <= 4; offset += 1) {
     const candidate = (playerIndex + offset) % 4;
-    if (!state.winners[candidate]) {
+    if (isPlayerActive(candidate)) {
       return candidate;
     }
   }
@@ -1694,7 +1875,7 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
     : [];
   if (ruleset.gameplay.allowDiscardWin) {
     let candidates = playersAfter(discarderIndex).filter((playerIndex) => {
-      if (state.winners[playerIndex]) {
+      if (!canPlayerWin(playerIndex)) {
         return false;
       }
       return isWinningHandLocal(
@@ -1793,6 +1974,7 @@ async function executePeng(playerIndex, discarderIndex, tile) {
   const meldIndex = state.melds[playerIndex].length - 1;
   state.pendingClaim = null;
   state.turnWinContexts[playerIndex] = null;
+  state.turnDrawnTiles[playerIndex] = null;
   if (playerIndex === 0) {
     state.postMeldAction = "peng";
   }
@@ -1886,7 +2068,7 @@ async function executeSelfGang(playerIndex, option) {
 async function resolveRobGang(gangPlayerIndex, option) {
   const ruleset = currentRuleset();
   let candidates = playersAfter(gangPlayerIndex).filter((playerIndex) => {
-    if (state.winners[playerIndex]) {
+    if (!canPlayerWin(playerIndex)) {
       return false;
     }
     return isWinningHandLocal(
@@ -1918,6 +2100,7 @@ async function resolveRobGang(gangPlayerIndex, option) {
     return true;
   }
   state.hands[gangPlayerIndex] = removeOne(state.hands[gangPlayerIndex], option.tile);
+  state.turnDrawnTiles[gangPlayerIndex] = null;
   await registerWins(candidates.map((playerIndex) => ({
     playerIndex,
     winningHand: [...state.hands[playerIndex], option.tile],
@@ -1968,6 +2151,7 @@ async function completeSelfGang(playerIndex, option) {
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
   state.turnWinContexts[playerIndex] = null;
+  state.turnDrawnTiles[playerIndex] = null;
   render();
   await continueAfterGang(playerIndex);
 }
@@ -1979,6 +2163,7 @@ async function continueAfterGang(playerIndex) {
     await finishDrawRound();
     return;
   }
+  state.turnDrawnTiles[playerIndex] = drawn;
   state.turnWinContexts[playerIndex] = "gangShangHua";
   logMessage(`${PLAYER_NAMES[playerIndex]}杠后补牌。`);
   if (
@@ -1989,6 +2174,7 @@ async function continueAfterGang(playerIndex) {
     await registerWins([{
       playerIndex,
       winningHand: state.hands[playerIndex],
+      winningTile: drawn,
       message: `${PLAYER_NAMES[playerIndex]}最后四张强制杠上花。`,
       winContext: "gangShangHua"
     }], { type: "selfDraw", payerIndex: null });
@@ -2012,10 +2198,10 @@ async function continueAfterGang(playerIndex) {
     await executeSelfGang(playerIndex, gangOptions[0]);
     return;
   }
-  await performBotDiscard(playerIndex, true);
+  await performBotDiscard(playerIndex, true, drawn);
 }
 
-async function performBotDiscard(playerIndex, allowHu) {
+async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   const ruleset = currentRuleset();
   const decision = await window.mahjongAI.recommendDiscard({
     rulesetId: ruleset.id,
@@ -2025,9 +2211,13 @@ async function performBotDiscard(playerIndex, allowHu) {
     mustDiscard: !allowHu
   });
   if (decision.action === "hu" && allowHu) {
+    if (drawnTile === null) {
+      throw new Error(`${PLAYER_NAMES[playerIndex]}自摸胡缺少本轮摸牌`);
+    }
     await registerWins([{
       playerIndex,
       winningHand: state.hands[playerIndex],
+      winningTile: drawnTile,
       message: `${PLAYER_NAMES[playerIndex]}自摸胡牌。`,
       winContext: state.turnWinContexts[playerIndex]
     }], { type: "selfDraw", payerIndex: null });
@@ -2046,11 +2236,12 @@ async function performBotDiscard(playerIndex, allowHu) {
   }
   const discardContext = state.turnWinContexts[playerIndex];
   state.turnWinContexts[playerIndex] = null;
+  state.turnDrawnTiles[playerIndex] = null;
   state.hands[playerIndex] = removeOne(state.hands[playerIndex], discard);
   state.discards[playerIndex].push(discard);
   logMessage(`${PLAYER_NAMES[playerIndex]}打出${tileLabel(discard)}。`);
   render();
-  await sleep(220);
+  await playTileSound(playerIndex, discard);
   const turnCaptured = await resolveDiscardActions(playerIndex, discard, discardContext);
   if (!state.roundOver && !turnCaptured) {
     await advanceFrom(playerIndex);
@@ -2136,6 +2327,7 @@ async function claimHu() {
         state.hands[pendingHu.discarderIndex],
         pendingHu.tile
       );
+      state.turnDrawnTiles[pendingHu.discarderIndex] = null;
     }
     const entries = pendingHu.botWinnerIndices.map((playerIndex) => ({
       playerIndex,
@@ -2171,6 +2363,10 @@ async function claimHu() {
     throw new Error("碰牌后必须先出牌，不能按自摸胡处理");
   }
   if (isWinningHandLocal(state.hands[0], ruleset, state.lackSuits[0])) {
+    const winningTile = state.turnDrawnTiles[0];
+    if (winningTile === null) {
+      throw new Error("自摸胡缺少本轮摸牌");
+    }
     const localScore = scoreHandLocal(
       state.hands[0],
       ruleset,
@@ -2181,6 +2377,7 @@ async function claimHu() {
     await registerWins([{
       playerIndex: 0,
       winningHand: state.hands[0],
+      winningTile,
       message: "你自摸胡牌了。",
       winContext: state.turnWinContexts[0]
     }], { type: "selfDraw", payerIndex: null });
@@ -2264,6 +2461,7 @@ async function passAction(automatic = false) {
           state.hands[pendingHu.discarderIndex],
           pendingHu.tile
         );
+        state.turnDrawnTiles[pendingHu.discarderIndex] = null;
         await registerWins(pendingHu.botWinnerIndices.map((playerIndex) => ({
           playerIndex,
           winningHand: [...state.hands[playerIndex], pendingHu.tile],
@@ -2332,8 +2530,16 @@ async function registerWins(entries, settlement) {
     throw new Error("discard payer cannot also be a winner");
   }
   const scoredEntries = entries.map((entry) => {
-    if (state.winners[entry.playerIndex]) {
+    if (!canPlayerWin(entry.playerIndex)) {
       throw new Error(`${PLAYER_NAMES[entry.playerIndex]}已经胡牌`);
+    }
+    if (settlement.type === "selfDraw") {
+      if (!Object.prototype.hasOwnProperty.call(entry, "winningTile")) {
+        throw new Error(`${PLAYER_NAMES[entry.playerIndex]}自摸胡缺少 winningTile`);
+      }
+      if (state.turnDrawnTiles[entry.playerIndex] !== entry.winningTile) {
+        throw new Error(`${PLAYER_NAMES[entry.playerIndex]}自摸胡牌张不是本轮摸牌`);
+      }
     }
     const score = scoreHandLocal(
       entry.winningHand,
@@ -2366,17 +2572,27 @@ async function registerWins(entries, settlement) {
 
   for (const entry of scoredEntries) {
     state.winners[entry.playerIndex] = true;
-    state.winningHands[entry.playerIndex] = sortTiles(entry.winningHand);
+    state.winCounts[entry.playerIndex] += 1;
+    state.winningHands[entry.playerIndex].push(sortTiles(entry.winningHand));
+    if (settlement.type === "selfDraw" && ruleset.gameplay.allowRepeatWins) {
+      state.hands[entry.playerIndex] = removeOne(state.hands[entry.playerIndex], entry.winningTile);
+      state.wonTiles[entry.playerIndex].push(entry.winningTile);
+    }
     state.turnWinContexts[entry.playerIndex] = null;
+    state.turnDrawnTiles[entry.playerIndex] = null;
     state.pendingGangEventIds[entry.playerIndex] = [];
     const patternNames = entry.score.patterns.map((pattern) => pattern.name).join("、");
-    logMessage(`${entry.message} ${entry.score.cappedFan} 番（${patternNames}），当前 ${state.scores[entry.playerIndex]} 分。`);
+    logMessage(`${entry.message} ${entry.score.cappedFan} 番（${patternNames}），本局第 ${state.winCounts[entry.playerIndex]} 次胡，当前 ${state.scores[entry.playerIndex]} 分。`);
   }
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
-  if (!ruleset.gameplay.continueAfterWin || state.winners.filter(Boolean).length >= ruleset.gameplay.maxWinners) {
-    endRound("牌局结束。");
-    return;
+  if (ruleset.gameplay.roundEndMode === "winnerLimitOrWallEmpty") {
+    if (!ruleset.gameplay.continueAfterWin || state.winners.filter(Boolean).length >= ruleset.gameplay.maxWinners) {
+      endRound("牌局结束。");
+      return;
+    }
+  } else if (ruleset.gameplay.roundEndMode !== "wallEmpty") {
+    throw new Error(`未知牌局结束模式：${ruleset.gameplay.roundEndMode}`);
   }
   render();
 }
@@ -2565,12 +2781,14 @@ function endRound(message) {
   state.selfDrawEligible = false;
   state.postMeldAction = null;
   logMessage(message);
-  const winnerNames = PLAYER_NAMES.filter((_name, playerIndex) => state.winners[playerIndex]);
+  const winSummary = PLAYER_NAMES
+    .map((name, playerIndex) => state.winCounts[playerIndex] > 0 ? `${name}×${state.winCounts[playerIndex]}` : null)
+    .filter((item) => item !== null);
   nodes.advisorContent.innerHTML = `
     <div class="advisor-card">
       <h2>牌局结算</h2>
       <p>${escapeHtml(message)}</p>
-      <p>已胡：${winnerNames.length === 0 ? "无" : escapeHtml(winnerNames.join("、"))}</p>
+      <p>胡牌次数：${winSummary.length === 0 ? "无" : escapeHtml(winSummary.join("、"))}</p>
     </div>
     <div class="advisor-card">
       <h2>积分</h2>
