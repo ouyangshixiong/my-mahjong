@@ -48,6 +48,20 @@ test("turn indicator markup is accessible and hidden until play begins", () => {
   assert.equal((html.match(/id="turnIndicatorLabel"/g) || []).length, 1);
 });
 
+test("discard rivers share the center field and face their owning seats", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../client/index.html"), "utf8");
+  const css = fs.readFileSync(path.join(__dirname, "../client/styles.css"), "utf8");
+  assert.match(html, /class="discard-field"[\s\S]*id="player2River" class="river river-top"[\s\S]*id="player1River" class="river river-left"[\s\S]*id="player3River" class="river river-right"[\s\S]*id="selfRiver" class="river river-self"/);
+  for (const riverId of ["selfRiver", "player1River", "player2River", "player3River"]) {
+    assert.equal((html.match(new RegExp(`id="${riverId}"`, "g")) || []).length, 1);
+  }
+  assert.match(css, /\.discard-field \.river\s*\{[^}]*grid-template-columns:\s*repeat\(6, 28px\)/s);
+  assert.match(css, /\.discard-field \.river-self\s*\{[^}]*transform:\s*translate\(-50%, -50%\);/s);
+  assert.match(css, /\.discard-field \.river-left\s*\{[^}]*rotate\(90deg\);/s);
+  assert.match(css, /\.discard-field \.river-top\s*\{[^}]*rotate\(180deg\);/s);
+  assert.match(css, /\.discard-field \.river-right\s*\{[^}]*rotate\(-90deg\);/s);
+});
+
 test("turn order rejects invalid seat data", () => {
   assert.throws(() => turnOrderFrom(-1), /playerIndex/);
   assert.throws(() => seatAfter(0, -1), /turn distance/);

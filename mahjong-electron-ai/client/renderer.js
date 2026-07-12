@@ -59,6 +59,7 @@ const EXCHANGE_RESULT_PAUSE_MS = 450;
 const HU_TO_PATTERN_PAUSE_MS = 550;
 const PATTERN_ANNOUNCEMENT_PAUSE_MS = 300;
 const WIN_RESULT_PAUSE_MS = 1200;
+const SELF_DRAW_EFFECT_DURATION_MS = 1000;
 const TILE_ART_DIRECTORY = "../assets/img/tiles";
 const PLAYER_RESPONSE_TIMEOUT_MS = 15000;
 const ACTION_SOUND_PATHS = Object.freeze({
@@ -137,6 +138,7 @@ const state = {
   recommendedTile: null,
   recommendedLackSuit: null,
   meldEffects: [null, null, null, null],
+  selfDrawEffect: null,
   postMeldAction: null,
   advisorVisible: false,
   messages: []
@@ -147,6 +149,8 @@ let playerResponseDeadline = null;
 let playerResponseTarget = null;
 let nextMeldEffectId = 1;
 const meldEffectTimers = [null, null, null, null];
+let nextSelfDrawEffectId = 1;
+let selfDrawEffectTimer = null;
 
 const nodes = {
   shell: mustGet("shell"),
@@ -161,6 +165,7 @@ const nodes = {
   player3Wall: mustGet("player3Wall"),
   messageLog: mustGet("messageLog"),
   selfHand: mustGet("selfHand"),
+  selfWonTiles: mustGet("selfWonTiles"),
   selfRiver: mustGet("selfRiver"),
   selfMelds: mustGet("selfMelds"),
   selfScore: mustGet("selfScore"),
@@ -168,6 +173,9 @@ const nodes = {
   player1Hand: mustGet("player1Hand"),
   player2Hand: mustGet("player2Hand"),
   player3Hand: mustGet("player3Hand"),
+  player1WonTiles: mustGet("player1WonTiles"),
+  player2WonTiles: mustGet("player2WonTiles"),
+  player3WonTiles: mustGet("player3WonTiles"),
   player1River: mustGet("player1River"),
   player2River: mustGet("player2River"),
   player3River: mustGet("player3River"),
@@ -386,6 +394,34 @@ function drawTile(playerIndex) {
   state.hands[playerIndex].push(tile);
   state.hands[playerIndex] = sortTiles(state.hands[playerIndex]);
   return tile;
+}
+
+function assertPlayerIndexLocal(playerIndex) {
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= state.hands.length) {
+    throw new Error(`玩家编号非法：${playerIndex}`);
+  }
+}
+
+function recordTurnDrawnTile(playerIndex, tile) {
+  assertPlayerIndexLocal(playerIndex);
+  if (!TILE_IDS.includes(tile)) {
+    throw new Error(`记录了未知摸牌：${tile}`);
+  }
+  if (state.turnDrawnTiles[playerIndex] !== null) {
+    throw new Error(`${PLAYER_NAMES[playerIndex]}上一张摸牌尚未清理`);
+  }
+  state.turnDrawnTiles[playerIndex] = tile;
+  if (playerIndex === 0) {
+    triggerSelfDrawEffect(tile);
+  }
+}
+
+function clearTurnDrawnTile(playerIndex) {
+  assertPlayerIndexLocal(playerIndex);
+  state.turnDrawnTiles[playerIndex] = null;
+  if (playerIndex === 0) {
+    clearSelfDrawEffect();
+  }
 }
 
 function removeOne(hand, tile) {
@@ -1315,6 +1351,36 @@ function clearMeldEffects() {
   state.meldEffects = [null, null, null, null];
 }
 
+function clearSelfDrawEffect() {
+  if (selfDrawEffectTimer !== null) {
+    clearTimeout(selfDrawEffectTimer);
+    selfDrawEffectTimer = null;
+  }
+  state.selfDrawEffect = null;
+}
+
+function triggerSelfDrawEffect(tile) {
+  if (state.turnDrawnTiles[0] !== tile) {
+    throw new Error("摸牌特效与本轮摸牌不一致");
+  }
+  if (!state.hands[0].includes(tile)) {
+    throw new Error(`摸牌特效找不到${tileLabel(tile)}`);
+  }
+  if (selfDrawEffectTimer !== null) {
+    clearTimeout(selfDrawEffectTimer);
+  }
+  const effectId = nextSelfDrawEffectId;
+  nextSelfDrawEffectId += 1;
+  state.selfDrawEffect = { effectId, tile };
+  selfDrawEffectTimer = setTimeout(() => {
+    if (state.selfDrawEffect?.effectId === effectId) {
+      state.selfDrawEffect = null;
+      selfDrawEffectTimer = null;
+      render();
+    }
+  }, SELF_DRAW_EFFECT_DURATION_MS);
+}
+
 function triggerMeldEffect(playerIndex, meldIndex, type) {
   if (!["peng", "gang"].includes(type)) {
     throw new Error(`未知副露特效：${type}`);
@@ -1476,22 +1542,132 @@ function createRiverTile(tile, index, tileCount) {
 }
 
 function createWonTile(tile, playerIndex, winIndex) {
-  const element = createTile(tile, playerIndex === 0 ? "normal" : "small", null);
+  const element = createTile(tile, "small", null);
   element.classList.add("won-tile");
   element.dataset.winLabel = `胡${winIndex + 1}`;
+  element.setAttribute("role", "listitem");
   element.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}第 ${winIndex + 1} 次胡牌张：${tileLabel(tile)}`);
   element.title = `第 ${winIndex + 1} 次胡牌：${tileLabel(tile)}`;
   return element;
 }
 
-function renderedHandTiles(playerIndex, concealedTiles) {
+function wonTileTrayNode(playerIndex) {
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
+    throw new Error(`胡牌张玩家索引非法：${playerIndex}`);
+  }
+  return playerIndex === 0 ? nodes.selfWonTiles : nodes[`player${playerIndex}WonTiles`];
+}
+
+function calculateWonTileGrid(tileCount, vertical, availableWidth, availableHeight) {
+  if (!Number.isInteger(tileCount) || tileCount <= 0) {
+    throw new Error(`胡牌张数量非法：${tileCount}`);
+  }
+  if (typeof vertical !== "boolean") {
+    throw new Error("胡牌张布局方向必须是布尔值");
+  }
+  if (!Number.isFinite(availableWidth) || availableWidth <= 0) {
+    throw new Error(`胡牌张可用宽度非法：${availableWidth}`);
+  }
+  if (!Number.isFinite(availableHeight) || availableHeight <= 0) {
+    throw new Error(`胡牌张可用高度非法：${availableHeight}`);
+  }
+
+  const baseCellWidth = vertical ? 56 : 34;
+  const baseCellHeight = vertical ? 34 : 56;
+  let bestLayout = null;
+  for (let rows = 1; rows <= tileCount; rows += 1) {
+    const columns = Math.ceil(tileCount / rows);
+    const scale = Math.min(
+      1,
+      availableWidth / (columns * baseCellWidth),
+      availableHeight / (rows * baseCellHeight)
+    );
+    const primarySlots = vertical ? rows : columns;
+    const unusedSlots = rows * columns - tileCount;
+    if (
+      bestLayout === null
+      || scale > bestLayout.scale + Number.EPSILON
+      || (
+        Math.abs(scale - bestLayout.scale) <= Number.EPSILON
+        && primarySlots > bestLayout.primarySlots
+      )
+      || (
+        Math.abs(scale - bestLayout.scale) <= Number.EPSILON
+        && primarySlots === bestLayout.primarySlots
+        && unusedSlots < bestLayout.unusedSlots
+      )
+    ) {
+      bestLayout = {
+        rows,
+        columns,
+        scale,
+        primarySlots,
+        unusedSlots,
+        cellWidth: baseCellWidth * scale,
+        cellHeight: baseCellHeight * scale
+      };
+    }
+  }
+  return bestLayout;
+}
+
+function layoutWonTileTray(playerIndex) {
+  const tray = wonTileTrayNode(playerIndex);
+  const winningTiles = Array.from(tray.children);
+  if (winningTiles.length === 0) {
+    return;
+  }
+  for (const tile of winningTiles) {
+    if (!tile.classList.contains("won-tile")) {
+      throw new Error(`${PLAYER_NAMES[playerIndex]}胡牌张托盘包含非法节点`);
+    }
+  }
+
+  const trayInset = 8;
+  const availableWidth = tray.clientWidth - trayInset * 2;
+  const availableHeight = tray.clientHeight - trayInset * 2;
+  const vertical = playerIndex === 1 || playerIndex === 3;
+  const layout = calculateWonTileGrid(
+    winningTiles.length,
+    vertical,
+    availableWidth,
+    availableHeight
+  );
+  const scale = layout.scale;
+  tray.style.setProperty("--won-columns", String(layout.columns));
+  tray.style.setProperty("--won-rows", String(layout.rows));
+  tray.style.setProperty("--won-cell-width", `${layout.cellWidth}px`);
+  tray.style.setProperty("--won-cell-height", `${layout.cellHeight}px`);
+  tray.style.setProperty("--won-tile-width", `${28 * scale}px`);
+  tray.style.setProperty("--won-tile-height", `${37 * scale}px`);
+  tray.style.setProperty("--won-label-top", `${-17 * scale}px`);
+  tray.style.setProperty("--won-side-label-left", `${-23 * scale}px`);
+  tray.style.setProperty("--won-label-min-width", `${25 * scale}px`);
+  tray.style.setProperty("--won-label-padding-y", `${2 * scale}px`);
+  tray.style.setProperty("--won-label-padding-x", `${5 * scale}px`);
+  tray.style.setProperty("--won-label-radius", `${9 * scale}px`);
+  tray.style.setProperty("--won-label-font-size", `${9 * scale}px`);
+
+  winningTiles.forEach((tile, index) => {
+    const line = Math.floor(index / layout.primarySlots);
+    const slot = index % layout.primarySlots;
+    if (vertical) {
+      tile.style.gridRow = String(slot + 1);
+      tile.style.gridColumn = String(playerIndex === 1 ? line + 1 : layout.columns - line);
+      return;
+    }
+    tile.style.gridColumn = String(slot + 1);
+    tile.style.gridRow = String(playerIndex === 2 ? line + 1 : layout.rows - line);
+  });
+}
+
+function renderWonTiles(playerIndex) {
+  const tray = wonTileTrayNode(playerIndex);
   const winningTiles = state.wonTiles[playerIndex].map((tile, winIndex) => (
     createWonTile(tile, playerIndex, winIndex)
   ));
-  if (winningTiles.length > 0) {
-    winningTiles[0].classList.add("first-won-tile");
-  }
-  return [...concealedTiles, ...winningTiles];
+  replaceChildren(tray, winningTiles);
+  layoutWonTileTray(playerIndex);
 }
 
 function wallSegmentCounts() {
@@ -1624,6 +1800,10 @@ function render() {
   renderTurnIndicator();
 
   const canDiscard = canSelfDiscard();
+  const selfHandEntries = window.mahjongAI.arrangeHandForDrawPreview(
+    state.hands[0],
+    state.selfDrawEffect === null ? null : state.selfDrawEffect.tile
+  );
   if (state.awaitingExchange) {
     const selectionCounts = Object.create(null);
     for (const tile of state.exchangeSelections[0]) {
@@ -1645,7 +1825,7 @@ function render() {
       primarySuit,
       ruleset
     );
-    const handTiles = state.hands[0].map((tile) => {
+    const handTiles = selfHandEntries.map(({ tile, isDrawnTile }) => {
       const selected = selectionCounts[tile] !== undefined && selectionCounts[tile] > 0;
       if (selected) {
         selectionCounts[tile] -= 1;
@@ -1659,6 +1839,9 @@ function render() {
         selected,
         recommended: false
       } : null);
+      if (isDrawnTile) {
+        element.classList.add("drawn-tile-effect");
+      }
       if (!interactive) {
         element.classList.add("blocked-by-exchange");
         element.title = state.exchangeSelections[0].length === ruleset.gameplay.exchangeTileCount
@@ -1667,25 +1850,29 @@ function render() {
       }
       return element;
     });
-    replaceChildren(nodes.selfHand, renderedHandTiles(0, handTiles));
+    replaceChildren(nodes.selfHand, handTiles);
   } else {
     const legalDiscards = canDiscard ? new Set(legalDiscardTilesLocal(state.hands[0], ruleset, state.lackSuits[0])) : new Set();
     const forcingDingque = canDiscard && hasDingqueTilesLocal(state.hands[0], ruleset, state.lackSuits[0]);
-    const handTiles = state.hands[0].map((tile) => {
+    const handTiles = selfHandEntries.map(({ tile, isDrawnTile }) => {
       const legal = canDiscard && legalDiscards.has(tile);
       const element = createTile(tile, "normal", legal ? {
         action: "discard",
         selected: false,
         recommended: state.recommendedTile === tile
       } : null);
+      if (isDrawnTile) {
+        element.classList.add("drawn-tile-effect");
+      }
       if (forcingDingque && !legalDiscards.has(tile)) {
         element.classList.add("blocked-by-dingque");
         element.title = `必须先打完定缺${suitLabelLocal(state.lackSuits[0])}`;
       }
       return element;
     });
-    replaceChildren(nodes.selfHand, renderedHandTiles(0, handTiles));
+    replaceChildren(nodes.selfHand, handTiles);
   }
+  renderWonTiles(0);
   replaceChildren(nodes.selfRiver, state.discards[0].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
   replaceChildren(nodes.selfMelds, state.melds[0].map((meld, meldIndex) => createMeld(meld, 0, meldIndex)));
 
@@ -1693,7 +1880,8 @@ function render() {
     const handNode = nodes[`player${playerIndex}Hand`];
     const riverNode = nodes[`player${playerIndex}River`];
     const meldNode = nodes[`player${playerIndex}Melds`];
-    replaceChildren(handNode, renderedHandTiles(playerIndex, state.hands[playerIndex].map(createTileBack)));
+    replaceChildren(handNode, state.hands[playerIndex].map(createTileBack));
+    renderWonTiles(playerIndex);
     replaceChildren(riverNode, state.discards[playerIndex].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
     replaceChildren(meldNode, state.melds[playerIndex].map((meld, meldIndex) => createMeld(meld, playerIndex, meldIndex)));
   }
@@ -1925,6 +2113,7 @@ async function startRound() {
   const ruleset = currentRuleset();
   clearPlayerResponseTimer();
   clearMeldEffects();
+  clearSelfDrawEffect();
   state.wall = buildWall(ruleset);
   state.hands = [[], [], [], []];
   state.discards = [[], [], [], []];
@@ -2039,7 +2228,7 @@ async function beginPlayPhase() {
     if (drawn === null) {
       throw new Error("庄家开局摸牌时牌墙已空");
     }
-    state.turnDrawnTiles[0] = drawn;
+    recordTurnDrawnTile(0, drawn);
   }
   state.turnPlayerIndex = 0;
   state.awaitingPlayerDiscard = true;
@@ -2173,7 +2362,7 @@ async function discardSelf(tile) {
   state.postMeldAction = null;
   const discardContext = state.turnWinContexts[0];
   state.turnWinContexts[0] = null;
-  state.turnDrawnTiles[0] = null;
+  clearTurnDrawnTile(0);
   state.selfDrawEligible = false;
   state.hands[0] = removeOne(state.hands[0], tile);
   state.discards[0].push(tile);
@@ -2204,7 +2393,7 @@ async function advanceFrom(previousPlayerIndex) {
       return;
     }
     state.turnPlayerIndex = playerIndex;
-    state.turnDrawnTiles[playerIndex] = drawn;
+    recordTurnDrawnTile(playerIndex, drawn);
     state.turnWinContexts[playerIndex] = state.wall.length === 0 ? "haiDi" : null;
 
     if (playerIndex === 0) {
@@ -2270,7 +2459,7 @@ async function advanceFrom(previousPlayerIndex) {
     }
     const discardContext = state.turnWinContexts[playerIndex];
     state.turnWinContexts[playerIndex] = null;
-    state.turnDrawnTiles[playerIndex] = null;
+    clearTurnDrawnTile(playerIndex);
     state.hands[playerIndex] = removeOne(state.hands[playerIndex], decision.discard);
     state.discards[playerIndex].push(decision.discard);
     state.turnPlayerIndex = null;
@@ -2429,7 +2618,7 @@ async function executePeng(playerIndex, discarderIndex, tile) {
   const meldIndex = state.melds[playerIndex].length - 1;
   state.pendingClaim = null;
   state.turnWinContexts[playerIndex] = null;
-  state.turnDrawnTiles[playerIndex] = null;
+  clearTurnDrawnTile(playerIndex);
   if (playerIndex === 0) {
     state.postMeldAction = "peng";
   }
@@ -2562,7 +2751,7 @@ async function resolveRobGang(gangPlayerIndex, option) {
     return true;
   }
   state.hands[gangPlayerIndex] = removeOne(state.hands[gangPlayerIndex], option.tile);
-  state.turnDrawnTiles[gangPlayerIndex] = null;
+  clearTurnDrawnTile(gangPlayerIndex);
   await registerWins(candidates.map((playerIndex) => ({
     playerIndex,
     winningHand: [...state.hands[playerIndex], option.tile],
@@ -2619,7 +2808,7 @@ async function completeSelfGang(playerIndex, option) {
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
   state.turnWinContexts[playerIndex] = null;
-  state.turnDrawnTiles[playerIndex] = null;
+  clearTurnDrawnTile(playerIndex);
   render();
   await continueAfterGang(playerIndex);
 }
@@ -2632,7 +2821,7 @@ async function continueAfterGang(playerIndex) {
     return;
   }
   state.turnPlayerIndex = playerIndex;
-  state.turnDrawnTiles[playerIndex] = drawn;
+  recordTurnDrawnTile(playerIndex, drawn);
   state.turnWinContexts[playerIndex] = "gangShangHua";
   logMessage(`${PLAYER_NAMES[playerIndex]}杠后补牌。`);
   if (
@@ -2739,7 +2928,7 @@ async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   }
   const discardContext = state.turnWinContexts[playerIndex];
   state.turnWinContexts[playerIndex] = null;
-  state.turnDrawnTiles[playerIndex] = null;
+  clearTurnDrawnTile(playerIndex);
   state.hands[playerIndex] = removeOne(state.hands[playerIndex], discard);
   state.discards[playerIndex].push(discard);
   state.turnPlayerIndex = null;
@@ -2831,7 +3020,7 @@ async function claimHu() {
         state.hands[pendingHu.discarderIndex],
         pendingHu.tile
       );
-      state.turnDrawnTiles[pendingHu.discarderIndex] = null;
+      clearTurnDrawnTile(pendingHu.discarderIndex);
     }
     const entries = pendingHu.botWinnerIndices.map((playerIndex) => ({
       playerIndex,
@@ -2974,7 +3163,7 @@ async function passAction(automatic = false) {
           state.hands[pendingHu.discarderIndex],
           pendingHu.tile
         );
-        state.turnDrawnTiles[pendingHu.discarderIndex] = null;
+        clearTurnDrawnTile(pendingHu.discarderIndex);
         await registerWins(pendingHu.botWinnerIndices.map((playerIndex) => ({
           playerIndex,
           winningHand: [...state.hands[playerIndex], pendingHu.tile],
@@ -3134,7 +3323,7 @@ async function registerWins(entries, settlement) {
     }
     state.wonTiles[entry.playerIndex].push(winningTile);
     state.turnWinContexts[entry.playerIndex] = null;
-    state.turnDrawnTiles[entry.playerIndex] = null;
+    clearTurnDrawnTile(entry.playerIndex);
     state.pendingGangEventIds[entry.playerIndex] = [];
     const patternNames = entry.score.patterns.map((pattern) => pattern.name).join("、");
     logMessage(`${entry.message} ${entry.score.cappedFan} 番（${patternNames}），本局第 ${state.winCounts[entry.playerIndex]} 次胡，当前 ${state.scores[entry.playerIndex]} 分。`);
@@ -3330,6 +3519,7 @@ function renderAdvisor(analysis, decision, localScore) {
 function endRound(message) {
   clearPlayerResponseTimer();
   clearMeldEffects();
+  clearSelfDrawEffect();
   state.roundOver = true;
   state.awaitingExchange = false;
   state.exchangeAnimation = null;
@@ -3406,6 +3596,11 @@ nodes.updateRulesButton.addEventListener("click", () => {
 });
 nodes.rulesetSelect.addEventListener("change", () => {
   runAsync(() => changeRuleset(nodes.rulesetSelect.value));
+});
+window.addEventListener("resize", () => {
+  for (let playerIndex = 0; playerIndex < PLAYER_NAMES.length; playerIndex += 1) {
+    layoutWonTileTray(playerIndex);
+  }
 });
 
 window.mahjongAI.onMenuCommand((command) => {

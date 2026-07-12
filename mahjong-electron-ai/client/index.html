@@ -40,8 +40,8 @@
             <span class="seat-copy"><b>对家 · 玄武</b><small><span id="player2LackSuit" class="lack-suit-badge"></span> <span id="player2WinCount" class="win-count-badge"></span> <span id="player2Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player2Hand" class="closed-hand"></div>
+          <div id="player2WonTiles" class="won-tiles won-tiles-top" role="list" aria-label="对家胡牌张"></div>
           <div id="player2Melds" class="melds"></div>
-          <div id="player2River" class="river"></div>
         </div>
 
         <div class="opponent opponent-left">
@@ -50,8 +50,8 @@
             <span class="seat-copy"><b>上家 · 白虎</b><small><span id="player1LackSuit" class="lack-suit-badge"></span> <span id="player1WinCount" class="win-count-badge"></span> <span id="player1Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player1Hand" class="closed-hand vertical"></div>
+          <div id="player1WonTiles" class="won-tiles won-tiles-left won-tiles-vertical" role="list" aria-label="上家胡牌张"></div>
           <div id="player1Melds" class="melds"></div>
-          <div id="player1River" class="river vertical-river"></div>
         </div>
 
         <div class="center-panel">
@@ -92,6 +92,13 @@
             </div>
           </div>
           <div id="messageLog" class="message-log"></div>
+        </div>
+
+        <div class="discard-field" aria-label="四家已出牌区域">
+          <div id="player2River" class="river river-top" aria-label="对家已出牌"></div>
+          <div id="player1River" class="river river-left" aria-label="上家已出牌"></div>
+          <div id="player3River" class="river river-right" aria-label="下家已出牌"></div>
+          <div id="selfRiver" class="river river-self" aria-label="你已出的牌"></div>
         </div>
 
         <div id="exchangeAnimation" class="exchange-animation" hidden aria-live="polite" aria-atomic="true">
@@ -163,8 +170,8 @@
             <span class="seat-copy"><b>下家 · 朱雀</b><small><span id="player3LackSuit" class="lack-suit-badge"></span> <span id="player3WinCount" class="win-count-badge"></span> <span id="player3Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player3Hand" class="closed-hand vertical"></div>
+          <div id="player3WonTiles" class="won-tiles won-tiles-right won-tiles-vertical" role="list" aria-label="下家胡牌张"></div>
           <div id="player3Melds" class="melds"></div>
-          <div id="player3River" class="river vertical-river"></div>
         </div>
 
         <div class="self-area">
@@ -172,7 +179,7 @@
             <span class="seat-avatar avatar-self">东</span>
             <span class="seat-copy"><b>你 · 青龙</b><small>定缺：<span id="selfLackSuit">未定</span> <span id="selfWinCount" class="win-count-badge"></span> · <span id="selfScore" class="score-badge">0分</span></small></span>
           </div>
-          <div id="selfRiver" class="river self-river"></div>
+          <div id="selfWonTiles" class="won-tiles won-tiles-self" role="list" aria-label="你的胡牌张"></div>
           <div id="selfMelds" class="melds self-melds"></div>
           <div id="selfHand" class="hand"></div>
         </div>
