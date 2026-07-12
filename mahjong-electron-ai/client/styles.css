@@ -1537,12 +1537,11 @@ body {
 
 .won-tiles-top {
   top: 88px;
-  left: 50%;
-  width: min(360px, 46vw);
+  right: 0;
+  width: 220px;
   height: min(145px, 18vh);
   align-content: start;
   justify-content: center;
-  transform: translateX(-50%);
 }
 
 .won-tiles-self {
@@ -1558,19 +1557,22 @@ body {
 .won-tiles-right {
   top: 62px;
   bottom: 74px;
-  width: min(160px, 15vw);
+  width: 126px;
   align-content: center;
 }
 
 .won-tiles-left {
-  left: 126px;
+  left: 121px;
   justify-content: start;
 }
 
 .won-tiles-right {
-  right: 126px;
+  right: 121px;
   justify-content: end;
 }
+
+.won-tiles-left.won-tiles-wrapped { left: 248px; }
+.won-tiles-right.won-tiles-wrapped { right: 248px; }
 
 .won-tiles .won-tile {
   width: var(--won-tile-width, 28px);
@@ -2006,6 +2008,11 @@ body {
   .hud-room { display: none; }
   .opponent-left { left: 12px; }
   .opponent-right { right: 12px; }
+  .won-tiles-left { width: 96px; }
+  .won-tiles-right { width: 96px; }
+  .won-tiles-left.won-tiles-wrapped { left: 228px; }
+  .won-tiles-right.won-tiles-wrapped { right: 228px; }
+  .won-tiles-self { width: 200px; }
   .wall-segment-left { left: 195px; }
   .wall-segment-right { right: 195px; }
   .opponent-top .player-card { right: -145px; }

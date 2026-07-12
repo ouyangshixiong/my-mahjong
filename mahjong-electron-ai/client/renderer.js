@@ -1574,11 +1574,12 @@ function calculateWonTileGrid(tileCount, vertical, availableWidth, availableHeig
 
   const baseCellWidth = vertical ? 56 : 34;
   const baseCellHeight = vertical ? 34 : 56;
+  const maximumScale = vertical ? 0.9 : 1;
   let bestLayout = null;
   for (let rows = 1; rows <= tileCount; rows += 1) {
     const columns = Math.ceil(tileCount / rows);
     const scale = Math.min(
-      1,
+      maximumScale,
       availableWidth / (columns * baseCellWidth),
       availableHeight / (rows * baseCellHeight)
     );
@@ -1589,12 +1590,12 @@ function calculateWonTileGrid(tileCount, vertical, availableWidth, availableHeig
       || scale > bestLayout.scale + Number.EPSILON
       || (
         Math.abs(scale - bestLayout.scale) <= Number.EPSILON
-        && primarySlots > bestLayout.primarySlots
+        && unusedSlots < bestLayout.unusedSlots
       )
       || (
         Math.abs(scale - bestLayout.scale) <= Number.EPSILON
-        && primarySlots === bestLayout.primarySlots
-        && unusedSlots < bestLayout.unusedSlots
+        && unusedSlots === bestLayout.unusedSlots
+        && primarySlots > bestLayout.primarySlots
       )
     ) {
       bestLayout = {
@@ -1634,6 +1635,7 @@ function layoutWonTileTray(playerIndex) {
     availableHeight
   );
   const scale = layout.scale;
+  tray.classList.toggle("won-tiles-wrapped", vertical ? layout.columns > 1 : layout.rows > 1);
   tray.style.setProperty("--won-columns", String(layout.columns));
   tray.style.setProperty("--won-rows", String(layout.rows));
   tray.style.setProperty("--won-cell-width", `${layout.cellWidth}px`);
