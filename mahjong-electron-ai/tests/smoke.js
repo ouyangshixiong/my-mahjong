@@ -32,6 +32,7 @@ async function main() {
     assert.equal(xueliu.ruleset.gameplay.maxWinners, 0);
     assert.equal(xueliu.ruleset.gameplay.winnerExitsAfterWin, false);
     assert.equal(xueliu.ruleset.gameplay.allowRepeatWins, true);
+    assert.equal(xueliu.ruleset.gameplay.allowPengAfterWin, false);
     assert.equal(xueliu.ruleset.gameplay.roundEndMode, "wallEmpty");
 
     const xuezhan = await fetchJson(`${baseUrl}/rulesets/sichuan-xuezhan`);

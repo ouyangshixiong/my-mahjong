@@ -9,6 +9,7 @@ test("blood-flow is the explicit default ruleset", () => {
   const ruleset = getRuleset(DEFAULT_RULESET_ID);
   assert.equal(ruleset.gameplay.allowRepeatWins, true);
   assert.equal(ruleset.gameplay.winnerExitsAfterWin, false);
+  assert.equal(ruleset.gameplay.allowPengAfterWin, false);
   assert.equal(ruleset.gameplay.roundEndMode, "wallEmpty");
   assert.equal(ruleset.gameplay.maxWinners, 0);
 });

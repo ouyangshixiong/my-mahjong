@@ -258,6 +258,7 @@ function assertRuleset(ruleset) {
     "requiresDingque",
     "mustDiscardDingqueFirst",
     "allowPeng",
+    "allowPengAfterWin",
     "allowGang",
     "allowRobGang",
     "allowDiscardWin",
@@ -296,6 +297,9 @@ function assertRuleset(ruleset) {
   }
   if (typeof ruleset.gameplay.allowRepeatWins !== "boolean") {
     throw new Error(`ruleset ${ruleset.id} gameplay.allowRepeatWins must be boolean`);
+  }
+  if (typeof ruleset.gameplay.allowPengAfterWin !== "boolean") {
+    throw new Error(`ruleset ${ruleset.id} gameplay.allowPengAfterWin must be boolean`);
   }
   if (!["winnerLimitOrWallEmpty", "wallEmpty"].includes(ruleset.gameplay.roundEndMode)) {
     throw new Error(`ruleset ${ruleset.id} gameplay.roundEndMode is invalid`);
@@ -614,6 +618,14 @@ function canUseExposedMeld(playerIndex, tile) {
     return false;
   }
   return !hasDingqueTilesLocal(state.hands[playerIndex], ruleset, state.lackSuits[playerIndex]);
+}
+
+function canClaimPeng(playerIndex, tile) {
+  const ruleset = currentRuleset();
+  if (state.winners[playerIndex] && !ruleset.gameplay.allowPengAfterWin) {
+    return false;
+  }
+  return canUseExposedMeld(playerIndex, tile);
 }
 
 function selfGangOptions(playerIndex) {
@@ -2088,13 +2100,17 @@ async function resolveMeldClaims(discarderIndex, tile) {
       return false;
     }
     const tileCount = countHandTile(playerIndex, tile);
-    return (ruleset.gameplay.allowGang && tileCount >= 3) || (ruleset.gameplay.allowPeng && tileCount >= 2);
+    const canGang = ruleset.gameplay.allowGang && tileCount >= 3;
+    const canPeng = ruleset.gameplay.allowPeng && tileCount >= 2 && canClaimPeng(playerIndex, tile);
+    return canGang || canPeng;
   });
   if (claimantIndex === undefined) {
     return false;
   }
   const canGang = ruleset.gameplay.allowGang && countHandTile(claimantIndex, tile) >= 3;
-  const canPeng = ruleset.gameplay.allowPeng && countHandTile(claimantIndex, tile) >= 2;
+  const canPeng = ruleset.gameplay.allowPeng
+    && countHandTile(claimantIndex, tile) >= 2
+    && canClaimPeng(claimantIndex, tile);
   if (claimantIndex === 0) {
     if (shouldAutoplaySelfAfterWin() && !canGang) {
       await executePeng(0, discarderIndex, tile);
@@ -2119,7 +2135,7 @@ async function resolveMeldClaims(discarderIndex, tile) {
 
 async function executePeng(playerIndex, discarderIndex, tile) {
   const ruleset = currentRuleset();
-  if (!ruleset.gameplay.allowPeng || !canUseExposedMeld(playerIndex, tile) || countHandTile(playerIndex, tile) < 2) {
+  if (!ruleset.gameplay.allowPeng || !canClaimPeng(playerIndex, tile) || countHandTile(playerIndex, tile) < 2) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}不能碰${tileLabel(tile)}`);
   }
   state.hands[playerIndex] = removeOne(removeOne(state.hands[playerIndex], tile), tile);
