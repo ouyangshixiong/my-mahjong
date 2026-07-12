@@ -16,7 +16,7 @@
         <button id="askAiButton" type="button" tabindex="-1">AI 建议</button>
       </div>
 
-      <section class="table">
+      <section id="gameTable" class="table">
         <div class="table-atmosphere" aria-hidden="true"></div>
         <header class="game-hud" aria-label="牌局状态">
           <div class="game-brand">
@@ -36,7 +36,7 @@
 
         <div class="opponent opponent-top">
           <div class="player-card">
-            <span class="seat-avatar avatar-top">北</span>
+            <span class="seat-avatar avatar-top">西</span>
             <span class="seat-copy"><b>对家 · 玄武</b><small><span id="player2LackSuit" class="lack-suit-badge"></span> <span id="player2WinCount" class="win-count-badge"></span> <span id="player2Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player2Hand" class="closed-hand"></div>
@@ -46,7 +46,7 @@
 
         <div class="opponent opponent-left">
           <div class="player-card">
-            <span class="seat-avatar avatar-left">西</span>
+            <span class="seat-avatar avatar-left">北</span>
             <span class="seat-copy"><b>上家 · 白虎</b><small><span id="player1LackSuit" class="lack-suit-badge"></span> <span id="player1WinCount" class="win-count-badge"></span> <span id="player1Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player1Hand" class="closed-hand vertical"></div>
@@ -74,10 +74,16 @@
           </div>
           <div class="round-console">
             <div class="wind-ring" aria-hidden="true">
-              <span class="wind wind-north">北</span>
-              <span class="wind wind-east">东</span>
-              <span class="wind wind-south">南</span>
-              <span class="wind wind-west">西</span>
+              <span class="wind wind-top">西</span>
+              <span class="wind wind-right">南</span>
+              <span class="wind wind-bottom">东</span>
+              <span class="wind wind-left">北</span>
+            </div>
+            <div id="turnIndicator" class="turn-indicator" hidden role="status" aria-live="polite" aria-atomic="true">
+              <span class="turn-indicator-arm" aria-hidden="true">
+                <span class="turn-indicator-arrow"></span>
+              </span>
+              <span id="turnIndicatorLabel" class="visually-hidden"></span>
             </div>
             <div class="wall-card">
               <small>剩余</small>
@@ -86,6 +92,42 @@
             </div>
           </div>
           <div id="messageLog" class="message-log"></div>
+        </div>
+
+        <div id="exchangeAnimation" class="exchange-animation" hidden aria-live="polite" aria-atomic="true">
+          <div id="exchangeFlightLayer" class="exchange-flight-layer" aria-hidden="true"></div>
+          <div id="exchangeAnnouncement" class="exchange-announcement">
+            <svg class="exchange-direction-arrows" viewBox="0 0 420 170" aria-hidden="true">
+              <defs>
+                <filter id="exchangeArrowGlow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="3" result="blur"></feGaussianBlur>
+                  <feMerge>
+                    <feMergeNode in="blur"></feMergeNode>
+                    <feMergeNode in="SourceGraphic"></feMergeNode>
+                  </feMerge>
+                </filter>
+                <marker id="exchangeArrowHead" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L9,4.5 L0,9 Z"></path>
+                </marker>
+              </defs>
+              <g class="exchange-arrow-set exchange-arrows-clockwise">
+                <path d="M74 68 C96 30 137 18 177 29"></path>
+                <path d="M346 102 C324 140 283 152 243 141"></path>
+              </g>
+              <g class="exchange-arrow-set exchange-arrows-counterclockwise">
+                <path d="M177 29 C137 18 96 30 74 68"></path>
+                <path d="M243 141 C283 152 324 140 346 102"></path>
+              </g>
+              <g class="exchange-arrow-set exchange-arrows-across">
+                <path d="M72 54 C142 18 278 18 348 54"></path>
+                <path d="M348 116 C278 152 142 152 72 116"></path>
+              </g>
+            </svg>
+            <div class="exchange-announcement-card">
+              <strong>换牌中<span class="exchange-ellipsis">...</span></strong>
+              <span id="exchangeDirectionMessage">本局顺时针换牌</span>
+            </div>
+          </div>
         </div>
 
         <div class="wall-segment wall-segment-top" aria-label="对家前方牌墙">
@@ -117,7 +159,7 @@
 
         <div class="opponent opponent-right">
           <div class="player-card">
-            <span class="seat-avatar avatar-right">东</span>
+            <span class="seat-avatar avatar-right">南</span>
             <span class="seat-copy"><b>下家 · 朱雀</b><small><span id="player3LackSuit" class="lack-suit-badge"></span> <span id="player3WinCount" class="win-count-badge"></span> <span id="player3Score" class="score-badge">0分</span></small></span>
           </div>
           <div id="player3Hand" class="closed-hand vertical"></div>
@@ -127,7 +169,7 @@
 
         <div class="self-area">
           <div class="self-player-card">
-            <span class="seat-avatar avatar-self">南</span>
+            <span class="seat-avatar avatar-self">东</span>
             <span class="seat-copy"><b>你 · 青龙</b><small>定缺：<span id="selfLackSuit">未定</span> <span id="selfWinCount" class="win-count-badge"></span> · <span id="selfScore" class="score-badge">0分</span></small></span>
           </div>
           <div id="selfRiver" class="river self-river"></div>

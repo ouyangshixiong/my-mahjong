@@ -1,5 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const { URL } = require("node:url");
+const {
+  turnIndicatorFor: getTurnIndicatorFor,
+  turnOrderFrom: getTurnOrderFrom
+} = require("./turn-order");
 
 function getServiceUrl() {
   const arg = process.argv.find((item) => item.startsWith("--ai-service-url="));
@@ -66,6 +70,12 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   recommendDiscard(payload) {
     return requestJson("/ai/discard", payload);
+  },
+  turnOrderFrom(playerIndex) {
+    return getTurnOrderFrom(playerIndex);
+  },
+  turnIndicatorFor(playerIndex) {
+    return getTurnIndicatorFor(playerIndex);
   },
   updateMenuState(payload) {
     ipcRenderer.send("menu:update-state", payload);

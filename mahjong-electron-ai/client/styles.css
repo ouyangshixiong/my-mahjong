@@ -459,13 +459,46 @@ button {
   50% { opacity: 1; }
 }
 
+@keyframes turn-arrow-nudge {
+  from {
+    transform: translateY(-50%) translateX(0);
+    opacity: 0.72;
+    filter: brightness(0.92) drop-shadow(0 0 4px var(--turn-glow));
+  }
+  to {
+    transform: translateY(-50%) translateX(5px);
+    opacity: 1;
+    filter: brightness(1.12) drop-shadow(0 0 8px var(--turn-glow));
+  }
+}
+
+@keyframes turn-seat-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 0 1px rgba(255, 255, 255, 0.08),
+      0 9px 22px rgba(0, 0, 0, 0.38),
+      0 0 0 1px color-mix(in srgb, var(--turn-card-accent), transparent 34%),
+      0 0 15px color-mix(in srgb, var(--turn-card-accent), transparent 52%);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px rgba(255, 255, 255, 0.12),
+      0 9px 22px rgba(0, 0, 0, 0.38),
+      0 0 0 2px color-mix(in srgb, var(--turn-card-accent), transparent 18%),
+      0 0 26px color-mix(in srgb, var(--turn-card-accent), transparent 30%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .meld-action-effect,
   .meld-action-effect::before,
   .meld-action-effect::after,
   .meld-action-effect .tile,
   #roundStatus.next-action-status,
-  .hand.next-action-highlight .tile.interactive {
+  .hand.next-action-highlight .tile.interactive,
+  .turn-indicator-arrow,
+  .table[data-turn-player] .player-card,
+  .table[data-turn-player] .self-player-card {
     animation: none;
   }
 }
@@ -1139,10 +1172,116 @@ body {
   transform: rotate(-45deg);
 }
 
-.wind-north { top: 24px; left: 25px; }
-.wind-east { top: 24px; right: 25px; color: #ffe18b; text-shadow: 0 0 8px rgba(255, 203, 78, 0.65); }
-.wind-south { right: 25px; bottom: 24px; }
-.wind-west { bottom: 24px; left: 25px; }
+.wind-top { top: 24px; left: 25px; }
+.wind-right { top: 24px; right: 25px; }
+.wind-bottom { right: 25px; bottom: 24px; color: #ffe18b; text-shadow: 0 0 8px rgba(255, 203, 78, 0.65); }
+.wind-left { bottom: 24px; left: 25px; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.turn-indicator {
+  --turn-angle: 0deg;
+  --turn-accent: #ff856f;
+  --turn-glow: rgba(255, 112, 91, 0.7);
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
+.turn-indicator[hidden] {
+  display: none;
+}
+
+.turn-indicator[data-player-index="0"] {
+  --turn-angle: 90deg;
+  --turn-accent: #74ffd0;
+  --turn-glow: rgba(71, 246, 193, 0.72);
+}
+
+.turn-indicator[data-player-index="1"] {
+  --turn-angle: 180deg;
+  --turn-accent: #ffe28a;
+  --turn-glow: rgba(255, 210, 92, 0.72);
+}
+
+.turn-indicator[data-player-index="2"] {
+  --turn-angle: -90deg;
+  --turn-accent: #79d6ff;
+  --turn-glow: rgba(78, 196, 255, 0.72);
+}
+
+.turn-indicator[data-player-index="3"] {
+  --turn-angle: 0deg;
+  --turn-accent: #ff856f;
+  --turn-glow: rgba(255, 112, 91, 0.72);
+}
+
+.turn-indicator-arm {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--turn-angle));
+  transform-origin: 50% 50%;
+}
+
+.turn-indicator-arrow {
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 27px);
+  width: 43px;
+  height: 20px;
+  transform: translateY(-50%);
+  animation: turn-arrow-nudge 780ms ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 5px var(--turn-glow));
+}
+
+.turn-indicator-arrow::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 0;
+  width: 33px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--turn-accent) 38%, #fff6c9 100%);
+  box-shadow: 0 0 8px var(--turn-glow);
+}
+
+.turn-indicator-arrow::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 14px solid var(--turn-accent);
+  filter: drop-shadow(0 0 4px var(--turn-glow));
+}
+
+.table[data-turn-player="0"] .self-player-card { --turn-card-accent: #74ffd0; }
+.table[data-turn-player="1"] .opponent-left .player-card { --turn-card-accent: #ffe28a; }
+.table[data-turn-player="2"] .opponent-top .player-card { --turn-card-accent: #79d6ff; }
+.table[data-turn-player="3"] .opponent-right .player-card { --turn-card-accent: #ff856f; }
+
+.table[data-turn-player="0"] .self-player-card,
+.table[data-turn-player="1"] .opponent-left .player-card,
+.table[data-turn-player="2"] .opponent-top .player-card,
+.table[data-turn-player="3"] .opponent-right .player-card {
+  border-color: color-mix(in srgb, var(--turn-card-accent), white 18%);
+  animation: turn-seat-pulse 1.15s ease-in-out infinite;
+}
 
 .wall-card {
   z-index: 2;
@@ -1523,6 +1662,211 @@ body {
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.14), 0 5px 12px rgba(0, 0, 0, 0.3);
 }
 
+.exchange-animation {
+  position: absolute;
+  inset: 48px 0 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+.exchange-animation[hidden] {
+  display: none;
+}
+
+.exchange-animation::before {
+  content: "";
+  position: absolute;
+  inset: 8% 13%;
+  z-index: 0;
+  background: radial-gradient(ellipse at center, rgba(38, 232, 211, 0.12), transparent 58%);
+  opacity: 0.9;
+}
+
+.exchange-flight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.exchange-flight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  filter: drop-shadow(0 9px 8px rgba(0, 0, 0, 0.48));
+  transform-origin: center;
+  will-change: transform, opacity, filter;
+}
+
+.exchange-flight-pack {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 4px 5px;
+  border: 1px solid rgba(126, 255, 212, 0.16);
+  border-radius: 7px;
+  background: rgba(3, 37, 36, 0.26);
+  box-shadow: 0 0 18px rgba(44, 230, 186, 0.16);
+}
+
+.exchange-flight .tile-back {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 43px;
+  border-color: rgba(174, 255, 220, 0.66);
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.36), transparent 27%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 5px),
+    linear-gradient(145deg, #28bd7f 0%, #0a8a59 50%, #035136 100%);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.1),
+    inset 0 -5px rgba(0, 28, 23, 0.32),
+    0 4px 0 #d9e9d9,
+    0 7px 0 #72a68b,
+    0 9px 8px rgba(0, 0, 0, 0.36),
+    0 0 12px rgba(55, 238, 188, 0.18);
+  animation: exchange-tile-shimmer 720ms ease-in-out infinite alternate;
+}
+
+.exchange-flight .tile-back:nth-child(1) {
+  transform: rotate(-1.5deg);
+}
+
+.exchange-flight .tile-back:nth-child(3) {
+  transform: rotate(1.5deg);
+}
+
+.exchange-announcement {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 420px;
+  height: 170px;
+  filter: drop-shadow(0 18px 24px rgba(0, 0, 0, 0.46));
+}
+
+.exchange-direction-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.exchange-direction-arrows marker path {
+  fill: #ffd64f;
+}
+
+.exchange-arrow-set {
+  opacity: 0;
+}
+
+.exchange-arrow-set path {
+  fill: none;
+  stroke: #ffd64f;
+  stroke-width: 5;
+  stroke-linecap: round;
+  marker-end: url("#exchangeArrowHead");
+  filter: url("#exchangeArrowGlow");
+}
+
+.exchange-animation.direction-clockwise .exchange-arrows-clockwise,
+.exchange-animation.direction-counterclockwise .exchange-arrows-counterclockwise,
+.exchange-animation.direction-across .exchange-arrows-across {
+  opacity: 1;
+}
+
+.exchange-announcement-card {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  width: 236px;
+  min-height: 104px;
+  padding: 18px 24px 16px;
+  border: 1px solid rgba(91, 241, 219, 0.38);
+  border-radius: 13px;
+  background:
+    linear-gradient(90deg, transparent, rgba(46, 223, 202, 0.13) 18%, rgba(46, 223, 202, 0.13) 82%, transparent) bottom / 100% 2px no-repeat,
+    radial-gradient(circle at 50% 116%, rgba(46, 223, 202, 0.22), transparent 46%),
+    linear-gradient(145deg, rgba(3, 49, 49, 0.97), rgba(2, 18, 24, 0.98));
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 -16px 30px rgba(17, 119, 111, 0.12),
+    0 16px 34px rgba(0, 0, 0, 0.52),
+    0 0 28px rgba(57, 223, 205, 0.18);
+  text-align: center;
+  animation: exchange-notice-pulse 1.05s ease-in-out infinite alternate;
+}
+
+.exchange-announcement-card::before,
+.exchange-announcement-card::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 42px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(81, 237, 218, 0.76));
+}
+
+.exchange-announcement-card::before {
+  right: 100%;
+}
+
+.exchange-announcement-card::after {
+  left: 100%;
+  transform: scaleX(-1);
+}
+
+.exchange-announcement-card strong {
+  color: #ffd85e;
+  font-family: STKaiti, KaiTi, "PingFang SC", sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 2px rgba(0, 0, 0, 0.76), 0 0 14px rgba(255, 204, 62, 0.42);
+}
+
+.exchange-announcement-card > span {
+  color: #effffd;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.72);
+}
+
+.exchange-ellipsis {
+  display: inline-block;
+  vertical-align: bottom;
+  animation: exchange-ellipsis 720ms ease-in-out infinite alternate;
+}
+
+.table.exchange-in-progress .round-console,
+.table.exchange-in-progress .message-log {
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+@keyframes exchange-notice-pulse {
+  from { transform: scale(0.985); filter: brightness(0.96); }
+  to { transform: scale(1.015); filter: brightness(1.08); }
+}
+
+@keyframes exchange-ellipsis {
+  from { opacity: 0.42; }
+  to { opacity: 1; }
+}
+
+@keyframes exchange-tile-shimmer {
+  from { filter: brightness(0.94) saturate(0.94); }
+  to { filter: brightness(1.13) saturate(1.08); }
+}
+
 .advisor {
   position: relative;
   z-index: 80;
@@ -1540,6 +1884,8 @@ body {
   .self-river { bottom: 112px; }
   .self-area { transform: translateX(-50%) scale(0.92); transform-origin: bottom; }
   .closed-hand.vertical { min-height: 245px; }
+  .exchange-animation { top: 42px; }
+  .exchange-announcement { transform: scale(0.9); }
 }
 
 @media (max-width: 1160px) {

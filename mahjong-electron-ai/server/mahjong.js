@@ -216,10 +216,10 @@ function assertExchangeDirection(direction) {
 function exchangeDirectionOffset(direction) {
   assertExchangeDirection(direction);
   if (direction === "clockwise") {
-    return 3;
+    return 1;
   }
   if (direction === "counterclockwise") {
-    return 1;
+    return 3;
   }
   if (direction === "across") {
     return 2;

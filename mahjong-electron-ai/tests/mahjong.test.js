@@ -150,10 +150,10 @@ test("exchange-three moves all four selections in the chosen direction", () => {
     ["m7", "m8", "m9"]
   ];
   const result = exchangeHands(hands, hands, "clockwise", xuezhan, ["m", "p", "s", "m"]);
-  assert.deepEqual(result.hands[0], ["p1", "p2", "p3"]);
-  assert.deepEqual(result.hands[1], ["s1", "s2", "s3"]);
-  assert.deepEqual(result.hands[2], ["m7", "m8", "m9"]);
-  assert.deepEqual(result.hands[3], ["m1", "m2", "m3"]);
+  assert.deepEqual(result.hands[0], ["m7", "m8", "m9"]);
+  assert.deepEqual(result.hands[1], ["m1", "m2", "m3"]);
+  assert.deepEqual(result.hands[2], ["p1", "p2", "p3"]);
+  assert.deepEqual(result.hands[3], ["s1", "s2", "s3"]);
 });
 
 test("exchange-three supports counterclockwise and opposite directions", () => {
@@ -164,8 +164,28 @@ test("exchange-three supports counterclockwise and opposite directions", () => {
     ["m7", "m8", "m9"]
   ];
   const lackSuits = ["m", "p", "s", "m"];
-  assert.deepEqual(exchangeHands(hands, hands, "counterclockwise", xuezhan, lackSuits).received[0], ["m7", "m8", "m9"]);
+  assert.deepEqual(exchangeHands(hands, hands, "counterclockwise", xuezhan, lackSuits).received[0], ["p1", "p2", "p3"]);
   assert.deepEqual(exchangeHands(hands, hands, "across", xuezhan, lackSuits).received[0], ["s1", "s2", "s3"]);
+});
+
+test("exchange-three maps every sender to the correct receiver for all three directions", () => {
+  const selections = [
+    ["m1", "m2", "m3"],
+    ["p1", "p2", "p3"],
+    ["s1", "s2", "s3"],
+    ["m7", "m8", "m9"]
+  ];
+  const lackSuits = ["m", "p", "s", "m"];
+  const expectedReceived = {
+    clockwise: [selections[3], selections[0], selections[1], selections[2]],
+    counterclockwise: [selections[1], selections[2], selections[3], selections[0]],
+    across: [selections[2], selections[3], selections[0], selections[1]]
+  };
+
+  for (const [direction, received] of Object.entries(expectedReceived)) {
+    const result = exchangeHands(selections, selections, direction, xuezhan, lackSuits);
+    assert.deepEqual(result.received, received, direction);
+  }
 });
 
 test("exchange-three rejects mixed-suit selections", () => {

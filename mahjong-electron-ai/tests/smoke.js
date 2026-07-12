@@ -143,6 +143,7 @@ async function main() {
     for (const relativePath of [
       "client/main.js",
       "client/preload.js",
+      "client/turn-order.js",
       "client/index.html",
       "client/renderer.js",
       "client/styles.css",

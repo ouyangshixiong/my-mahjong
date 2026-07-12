@@ -12,10 +12,12 @@ const {
   sortTiles
 } = require("../server/mahjong");
 const { getRuleset } = require("../server/rulesets");
+const { seatAfter } = require("../client/turn-order");
 
 const PLAYER_COUNT = 4;
 const ROUND_COUNT = 4;
 const MAX_TURNS_PER_ROUND = 160;
+const EXCHANGE_DIRECTIONS = Object.freeze(["clockwise", "counterclockwise", "across"]);
 
 test("four AI users complete a four-round Mahjong circle", () => {
   const ruleset = getRuleset("sichuan-xuezhan");
@@ -25,7 +27,8 @@ test("four AI users complete a four-round Mahjong circle", () => {
     summaries.push(playRound({
       ruleset,
       seed: 2026070901 + roundIndex,
-      dealerIndex: roundIndex % PLAYER_COUNT
+      dealerIndex: seatAfter(0, roundIndex),
+      exchangeDirection: EXCHANGE_DIRECTIONS[roundIndex % EXCHANGE_DIRECTIONS.length]
     }));
   }
 
@@ -36,7 +39,7 @@ test("four AI users complete a four-round Mahjong circle", () => {
   console.info(`four-round circle summaries: ${JSON.stringify(summaries)}`);
 });
 
-function playRound({ ruleset, seed, dealerIndex }) {
+function playRound({ ruleset, seed, dealerIndex, exchangeDirection }) {
   const state = {
     wall: buildWall(ruleset, seed),
     hands: Array.from({ length: PLAYER_COUNT }, () => []),
@@ -60,7 +63,7 @@ function playRound({ ruleset, seed, dealerIndex }) {
   state.hands = exchangeHands(
     state.hands,
     exchangeSelections,
-    "clockwise",
+    exchangeDirection,
     ruleset,
     state.lackSuits
   ).hands;
@@ -164,10 +167,6 @@ function drawTile(state, playerIndex) {
   state.hands[playerIndex].push(tile);
   state.hands[playerIndex] = sortTiles(state.hands[playerIndex]);
   return tile;
-}
-
-function seatAfter(playerIndex, offset) {
-  return (playerIndex + offset) % PLAYER_COUNT;
 }
 
 function winnerCount(state) {

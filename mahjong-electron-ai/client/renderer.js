@@ -39,6 +39,7 @@ const TILE_IDS = Object.freeze(TILE_DEFS.map((tile) => tile.id));
 const TILE_BY_ID = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => [tile.id, tile])));
 const TILE_ORDER = Object.freeze(Object.fromEntries(TILE_IDS.map((tile, index) => [tile, index])));
 const PLAYER_NAMES = Object.freeze(["你", "上家", "对家", "下家"]);
+const TURN_ORDER = Object.freeze([...window.mahjongAI.turnOrderFrom(0)]);
 const PLAYER_VOICE_PROFILES = Object.freeze([
   Object.freeze({ name: "原声", playbackRate: 1 }),
   Object.freeze({ name: "低沉", playbackRate: 0.86 }),
@@ -53,7 +54,8 @@ const EXCHANGE_DIRECTION_LABELS = Object.freeze({
   counterclockwise: "逆时针",
   across: "对家"
 });
-const EXCHANGE_RESULT_PAUSE_MS = 2000;
+const EXCHANGE_ANIMATION_DURATION_MS = 2400;
+const EXCHANGE_RESULT_PAUSE_MS = 450;
 const HU_TO_PATTERN_PAUSE_MS = 550;
 const PATTERN_ANNOUNCEMENT_PAUSE_MS = 300;
 const WIN_RESULT_PAUSE_MS = 1200;
@@ -117,11 +119,13 @@ const state = {
   wonTiles: [[], [], [], []],
   visibleWonTiles: [],
   turnDrawnTiles: [null, null, null, null],
+  turnPlayerIndex: null,
   lackSuits: [null, null, null, null],
   awaitingExchange: false,
   exchangeSelections: [[], [], [], []],
   exchangePrimarySuit: null,
   exchangeDirection: null,
+  exchangeAnimation: null,
   awaitingLackSuit: false,
   awaitingPlayerDiscard: false,
   pendingHu: null,
@@ -146,8 +150,11 @@ const meldEffectTimers = [null, null, null, null];
 
 const nodes = {
   shell: mustGet("shell"),
+  gameTable: mustGet("gameTable"),
   roundStatus: mustGet("roundStatus"),
   wallCount: mustGet("wallCount"),
+  turnIndicator: mustGet("turnIndicator"),
+  turnIndicatorLabel: mustGet("turnIndicatorLabel"),
   player0Wall: mustGet("player0Wall"),
   player1Wall: mustGet("player1Wall"),
   player2Wall: mustGet("player2Wall"),
@@ -180,6 +187,10 @@ const nodes = {
   exchangePanel: mustGet("exchangePanel"),
   exchangeSelectionStatus: mustGet("exchangeSelectionStatus"),
   confirmExchangeButton: mustGet("confirmExchangeButton"),
+  exchangeAnimation: mustGet("exchangeAnimation"),
+  exchangeFlightLayer: mustGet("exchangeFlightLayer"),
+  exchangeAnnouncement: mustGet("exchangeAnnouncement"),
+  exchangeDirectionMessage: mustGet("exchangeDirectionMessage"),
   lackSuitPanel: mustGet("lackSuitPanel"),
   advisorContent: mustGet("advisorContent"),
   advisor: mustGet("advisor"),
@@ -348,16 +359,23 @@ function shuffle(tiles) {
 }
 
 function randomInt(maxExclusive) {
-  if (!Number.isInteger(maxExclusive) || maxExclusive < 1) {
-    throw new Error("maxExclusive must be a positive integer");
+  if (!Number.isInteger(maxExclusive) || maxExclusive < 1 || maxExclusive > 0x100000000) {
+    throw new Error("maxExclusive must be an integer from 1 to 2^32");
   }
+  const sampleLimit = 0x100000000 - (0x100000000 % maxExclusive);
   const buffer = new Uint32Array(1);
-  window.crypto.getRandomValues(buffer);
+  do {
+    window.crypto.getRandomValues(buffer);
+  } while (buffer[0] >= sampleLimit);
   return buffer[0] % maxExclusive;
 }
 
 function sortTiles(tiles) {
   return [...tiles].sort((left, right) => TILE_ORDER[left] - TILE_ORDER[right]);
+}
+
+function turnOrderFrom(playerIndex) {
+  return window.mahjongAI.turnOrderFrom(playerIndex);
 }
 
 function drawTile(playerIndex) {
@@ -462,10 +480,10 @@ function exchangeMixedFillUnlockedLocal(hand, selection, primarySuit, ruleset) {
 
 function exchangeDirectionOffset(direction) {
   if (direction === "clockwise") {
-    return 3;
+    return 1;
   }
   if (direction === "counterclockwise") {
-    return 1;
+    return 3;
   }
   if (direction === "across") {
     return 2;
@@ -508,6 +526,162 @@ function exchangeHandsLocal(hands, selections, direction, ruleset, lackSuits) {
     throw new Error("换三张后牌张守恒校验失败");
   }
   return { hands: nextHands, received };
+}
+
+function exchangeSeatHandNode(playerIndex) {
+  if (playerIndex === 0) {
+    return nodes.selfHand;
+  }
+  const handNode = nodes[`player${playerIndex}Hand`];
+  if (!(handNode instanceof HTMLElement)) {
+    throw new Error(`换牌动画缺少玩家 ${playerIndex} 的手牌节点`);
+  }
+  return handNode;
+}
+
+function exchangeSeatRotation(playerIndex) {
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex > 3) {
+    throw new Error(`换牌动画玩家编号非法：${playerIndex}`);
+  }
+  return playerIndex % 2 === 0 ? 0 : 90;
+}
+
+function centerWithin(element, containerRect) {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.left - containerRect.left + rect.width / 2,
+    y: rect.top - containerRect.top + rect.height / 2
+  };
+}
+
+function exchangeInnerSeatVectors(overlayRect) {
+  const horizontalRadius = Math.min(260, overlayRect.width * 0.23);
+  const verticalRadius = Math.min(170, overlayRect.height * 0.22);
+  return [
+    { x: 0, y: verticalRadius },
+    { x: -horizontalRadius, y: 0 },
+    { x: 0, y: -verticalRadius },
+    { x: horizontalRadius, y: 0 }
+  ];
+}
+
+function addPoints(left, right) {
+  return { x: left.x + right.x, y: left.y + right.y };
+}
+
+function exchangeCurvePoint(center, sourceVector, targetVector, direction, senderIndex) {
+  if (direction === "across") {
+    if (sourceVector.y !== 0) {
+      return addPoints(center, { x: senderIndex === 0 ? -205 : 205, y: 0 });
+    }
+    return addPoints(center, { x: 0, y: senderIndex === 1 ? 125 : -125 });
+  }
+  return addPoints(center, {
+    x: (sourceVector.x + targetVector.x) * 0.78,
+    y: (sourceVector.y + targetVector.y) * 0.78
+  });
+}
+
+function exchangeFlightTransform(point, rotation, scale) {
+  return `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -50%) rotate(${rotation}deg) scale(${scale})`;
+}
+
+function createExchangeFlight(senderIndex, tileCount) {
+  const flight = document.createElement("div");
+  flight.className = "exchange-flight";
+  flight.dataset.senderIndex = String(senderIndex);
+  const pack = document.createElement("div");
+  pack.className = "exchange-flight-pack";
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    pack.append(createTileBack());
+  }
+  flight.append(pack);
+  return flight;
+}
+
+async function playExchangeAnimation(direction, selections) {
+  if (state.exchangeAnimation === null || state.exchangeAnimation.direction !== direction) {
+    throw new Error("换牌动画状态与本局换牌方向不一致");
+  }
+  if (!Array.isArray(selections) || selections.length !== 4) {
+    throw new Error("换牌动画要求四家选牌");
+  }
+  const ruleset = currentRuleset();
+  for (const selection of selections) {
+    if (!Array.isArray(selection) || selection.length !== ruleset.gameplay.exchangeTileCount) {
+      throw new Error(`换牌动画每家必须包含 ${ruleset.gameplay.exchangeTileCount} 张牌`);
+    }
+  }
+
+  const directionOffset = exchangeDirectionOffset(direction);
+  const overlayRect = nodes.exchangeAnimation.getBoundingClientRect();
+  if (overlayRect.width <= 0 || overlayRect.height <= 0) {
+    throw new Error("换牌动画层没有可用尺寸");
+  }
+  const center = centerWithin(nodes.exchangeAnnouncement, overlayRect);
+  const seatVectors = exchangeInnerSeatVectors(overlayRect);
+  const flights = selections.map((_selection, senderIndex) => (
+    createExchangeFlight(senderIndex, ruleset.gameplay.exchangeTileCount)
+  ));
+  replaceChildren(nodes.exchangeFlightLayer, flights);
+
+  const animations = flights.map((flight, senderIndex) => {
+    const receiverIndex = (senderIndex + directionOffset) % 4;
+    const sourcePoint = centerWithin(exchangeSeatHandNode(senderIndex), overlayRect);
+    const targetPoint = centerWithin(exchangeSeatHandNode(receiverIndex), overlayRect);
+    const innerSource = addPoints(center, seatVectors[senderIndex]);
+    const innerTarget = addPoints(center, seatVectors[receiverIndex]);
+    const curvePoint = exchangeCurvePoint(
+      center,
+      seatVectors[senderIndex],
+      seatVectors[receiverIndex],
+      direction,
+      senderIndex
+    );
+    const sourceRotation = exchangeSeatRotation(senderIndex);
+    const targetRotation = exchangeSeatRotation(receiverIndex);
+    const middleRotation = (sourceRotation + targetRotation) / 2;
+
+    return flight.animate([
+      {
+        transform: exchangeFlightTransform(sourcePoint, sourceRotation, 0.72),
+        opacity: 0,
+        offset: 0
+      },
+      {
+        transform: exchangeFlightTransform(innerSource, sourceRotation, 1),
+        opacity: 1,
+        offset: 0.22
+      },
+      {
+        transform: exchangeFlightTransform(innerSource, sourceRotation, 1),
+        opacity: 1,
+        offset: 0.36
+      },
+      {
+        transform: exchangeFlightTransform(curvePoint, middleRotation, 1.08),
+        opacity: 1,
+        offset: 0.62
+      },
+      {
+        transform: exchangeFlightTransform(innerTarget, targetRotation, 1),
+        opacity: 1,
+        offset: 0.84
+      },
+      {
+        transform: exchangeFlightTransform(targetPoint, targetRotation, 0.72),
+        opacity: 0,
+        offset: 1
+      }
+    ], {
+      duration: EXCHANGE_ANIMATION_DURATION_MS,
+      easing: "cubic-bezier(0.42, 0, 0.2, 1)",
+      fill: "both"
+    });
+  });
+
+  await Promise.all(animations.map((animation) => animation.finished));
+  nodes.exchangeFlightLayer.replaceChildren();
 }
 
 function visibleTiles() {
@@ -1332,8 +1506,7 @@ function wallSegmentCounts() {
     baseCount + (index < state.wallInitialCount % 4 ? 1 : 0)
   ));
   let consumed = state.wallInitialCount - state.wall.length;
-  const drawOrder = [0, 3, 2, 1];
-  for (const playerIndex of drawOrder) {
+  for (const playerIndex of TURN_ORDER) {
     const removed = Math.min(consumed, initialCounts[playerIndex]);
     initialCounts[playerIndex] -= removed;
     consumed -= removed;
@@ -1370,12 +1543,12 @@ function createMeld(meld, playerIndex, meldIndex) {
       ? `${meld.type === "peng" ? "碰" : "杠"} · 注意下一步`
       : meld.type === "peng" ? "碰" : "杠";
   }
-  const relativeSource = (meld.from - playerIndex + 4) % 4;
+  const sourceTurnOffset = turnOrderFrom(playerIndex).indexOf(meld.from);
   const claimedSlotIndex = meld.source === "concealed"
     ? 1
-    : ({ 1: 2, 2: 1, 3: 0 })[relativeSource];
+    : ({ 1: 2, 2: 1, 3: 0 })[sourceTurnOffset];
   if (!Number.isInteger(claimedSlotIndex)) {
-    throw new Error(`Invalid meld source direction: ${relativeSource}`);
+    throw new Error(`Invalid meld source direction: ${sourceTurnOffset}`);
   }
   const slots = meld.tiles.slice(0, 3).map((tile, tileIndex) => {
     const slot = document.createElement("span");
@@ -1401,6 +1574,43 @@ function replaceChildren(node, children) {
   node.replaceChildren(...children);
 }
 
+function renderExchangeAnimation() {
+  const animation = state.exchangeAnimation;
+  const active = animation !== null;
+  nodes.gameTable.classList.toggle("exchange-in-progress", active);
+  nodes.exchangeAnimation.hidden = !active;
+  for (const direction of EXCHANGE_DIRECTIONS) {
+    nodes.exchangeAnimation.classList.toggle(`direction-${direction}`, active && animation.direction === direction);
+  }
+  if (!active) {
+    nodes.exchangeAnimation.removeAttribute("aria-label");
+    nodes.exchangeFlightLayer.replaceChildren();
+    return;
+  }
+  const directionLabel = exchangeDirectionLabel(animation.direction);
+  nodes.exchangeDirectionMessage.textContent = `本局${directionLabel}换牌`;
+  nodes.exchangeAnimation.setAttribute("aria-label", `换牌中，本局${directionLabel}换牌`);
+}
+
+function renderTurnIndicator() {
+  const indicator = window.mahjongAI.turnIndicatorFor(state.turnPlayerIndex);
+  const visible = indicator !== null;
+  nodes.turnIndicator.hidden = !visible;
+  if (!visible) {
+    delete nodes.turnIndicator.dataset.playerIndex;
+    delete nodes.turnIndicator.dataset.direction;
+    delete nodes.gameTable.dataset.turnPlayer;
+    nodes.turnIndicator.removeAttribute("aria-label");
+    nodes.turnIndicatorLabel.textContent = "";
+    return;
+  }
+  nodes.turnIndicator.dataset.playerIndex = String(indicator.playerIndex);
+  nodes.turnIndicator.dataset.direction = indicator.direction;
+  nodes.gameTable.dataset.turnPlayer = String(indicator.playerIndex);
+  nodes.turnIndicator.setAttribute("aria-label", indicator.ariaLabel);
+  nodes.turnIndicatorLabel.textContent = indicator.ariaLabel;
+}
+
 function render() {
   const ruleset = state.ruleset;
   nodes.wallCount.textContent = String(state.wall.length);
@@ -1410,6 +1620,8 @@ function render() {
   nodes.roundStatus.classList.toggle("next-action-status", state.postMeldAction !== null && state.awaitingPlayerDiscard);
   nodes.advisor.hidden = !state.advisorVisible;
   nodes.shell.classList.toggle("advisor-visible", state.advisorVisible);
+  renderExchangeAnimation();
+  renderTurnIndicator();
 
   const canDiscard = canSelfDiscard();
   if (state.awaitingExchange) {
@@ -1515,7 +1727,7 @@ function render() {
   }
 
   nodes.askAiButton.disabled = !canDiscard && !state.awaitingLackSuit && !state.awaitingExchange;
-  const canChooseSelfGang = canDiscard || state.pendingPostWinGang !== null;
+  const canChooseSelfGang = canSelfGang();
   const gangOptions = ruleset !== null && canChooseSelfGang ? selfGangOptions(0) : [];
   const gangOptionNodes = gangOptions.map((option) => {
     const optionNode = document.createElement("option");
@@ -1536,18 +1748,19 @@ function render() {
     && state.pendingPostWinGang === null;
   nodes.actionPanel.hidden = [nodes.huButton, nodes.pengButton, nodes.gangButton, nodes.passButton]
     .every((button) => button.disabled);
-  nodes.newRoundButton.disabled = state.ruleset === null;
-  nodes.updateRulesButton.disabled = false;
-  nodes.rulesetSelect.disabled = state.rulesets.length === 0;
+  const exchangeAnimating = state.exchangeAnimation !== null;
+  nodes.newRoundButton.disabled = state.ruleset === null || exchangeAnimating;
+  nodes.updateRulesButton.disabled = exchangeAnimating;
+  nodes.rulesetSelect.disabled = state.rulesets.length === 0 || exchangeAnimating;
   window.mahjongAI.updateMenuState({
     rulesets: state.rulesets.map((availableRuleset) => ({
       id: availableRuleset.id,
       label: `${availableRuleset.name} v${availableRuleset.version}`
     })),
     currentRulesetId: ruleset === null ? null : ruleset.id,
-    canStartRound: ruleset !== null,
+    canStartRound: ruleset !== null && !exchangeAnimating,
     canAskAi: !nodes.askAiButton.disabled,
-    canUpdateRules: true,
+    canUpdateRules: !exchangeAnimating,
     advisorVisible: state.advisorVisible
   });
 }
@@ -1571,6 +1784,9 @@ function roundStatusText() {
   }
   if (state.roundOver) {
     return `${state.ruleset.name}：牌局结束`;
+  }
+  if (state.exchangeAnimation !== null) {
+    return `${state.ruleset.name}：换牌中，本局${exchangeDirectionLabel(state.exchangeAnimation.direction)}换牌`;
   }
   if (state.awaitingExchange) {
     return state.ruleset.gameplay.exchangeUsesDingqueSuit
@@ -1621,6 +1837,11 @@ function canSelfDiscard() {
     && state.pendingPostWinGang === null
     && state.awaitingPlayerDiscard
     && isPlayerActive(0);
+}
+
+function canSelfGang() {
+  return state.pendingPostWinGang !== null
+    || (canSelfDiscard() && state.selfDrawEligible);
 }
 
 function shouldAutoplaySelfAfterWin() {
@@ -1674,7 +1895,14 @@ function populateRulesetSelect() {
   replaceChildren(nodes.rulesetSelect, options);
 }
 
+function assertExchangeAnimationIdle(action) {
+  if (state.exchangeAnimation !== null) {
+    throw new Error(`换牌动画进行中，不能${action}`);
+  }
+}
+
 async function changeRuleset(rulesetId) {
+  assertExchangeAnimationIdle("切换玩法");
   const response = await window.mahjongAI.getRuleset(rulesetId);
   assertRuleset(response.ruleset);
   state.ruleset = response.ruleset;
@@ -1684,6 +1912,7 @@ async function changeRuleset(rulesetId) {
 }
 
 async function updateRulesets() {
+  assertExchangeAnimationIdle("更新玩法");
   const before = state.ruleset === null ? "未加载" : `${state.ruleset.name} v${state.ruleset.version}`;
   await loadRulesets();
   const after = `${state.ruleset.name} v${state.ruleset.version}`;
@@ -1692,6 +1921,7 @@ async function updateRulesets() {
 }
 
 async function startRound() {
+  assertExchangeAnimationIdle("开始新牌局");
   const ruleset = currentRuleset();
   clearPlayerResponseTimer();
   clearMeldEffects();
@@ -1709,11 +1939,13 @@ async function startRound() {
   state.wonTiles = [[], [], [], []];
   state.visibleWonTiles = [];
   state.turnDrawnTiles = [null, null, null, null];
+  state.turnPlayerIndex = null;
   state.lackSuits = [null, null, null, null];
   state.awaitingExchange = false;
   state.exchangeSelections = [[], [], [], []];
   state.exchangePrimarySuit = null;
   state.exchangeDirection = null;
+  state.exchangeAnimation = null;
   state.awaitingLackSuit = false;
   state.awaitingPlayerDiscard = false;
   state.pendingHu = null;
@@ -1726,9 +1958,10 @@ async function startRound() {
   state.recommendedLackSuit = null;
   state.postMeldAction = null;
   state.messages = [];
+  renderTurnIndicator();
 
   for (let round = 0; round < ruleset.gameplay.initialHandSize; round += 1) {
-    for (let playerIndex = 0; playerIndex < 4; playerIndex += 1) {
+    for (const playerIndex of TURN_ORDER) {
       drawTile(playerIndex);
     }
   }
@@ -1755,6 +1988,8 @@ async function beginDingquePhase() {
   if (!ruleset.gameplay.requiresDingque) {
     throw new Error(`玩法 ${ruleset.id} 不使用定缺`);
   }
+  state.turnPlayerIndex = null;
+  renderTurnIndicator();
   const botChoices = await Promise.all([1, 2, 3].map((playerIndex) => window.mahjongAI.chooseLackSuit({
     rulesetId: ruleset.id,
     hand: state.hands[playerIndex]
@@ -1775,6 +2010,8 @@ async function beginExchangePhase() {
   if (!ruleset.gameplay.requiresExchangeThree) {
     throw new Error(`玩法 ${ruleset.id} 不使用换三张`);
   }
+  state.turnPlayerIndex = null;
+  renderTurnIndicator();
   const lackSuits = ruleset.gameplay.exchangeUsesDingqueSuit
     ? state.lackSuits
     : [null, null, null, null];
@@ -1804,6 +2041,7 @@ async function beginPlayPhase() {
     }
     state.turnDrawnTiles[0] = drawn;
   }
+  state.turnPlayerIndex = 0;
   state.awaitingPlayerDiscard = true;
   state.selfDrawEligible = true;
   render();
@@ -1879,9 +2117,18 @@ async function confirmExchange() {
   const selections = state.exchangeSelections.map((selection) => sortTiles(selection));
   const result = exchangeHandsLocal(state.hands, selections, direction, ruleset, lackSuits);
   const sent = selections[0];
-  state.hands = result.hands;
+  const animationState = Object.freeze({ direction });
   state.exchangeDirection = direction;
   state.awaitingExchange = false;
+  state.exchangeAnimation = animationState;
+  logMessage(`本局${exchangeDirectionLabel(direction)}换牌，正在交换四家的三张牌。`);
+  render();
+  await playExchangeAnimation(direction, selections);
+  if (state.exchangeAnimation !== animationState) {
+    throw new Error("换牌动画完成时牌局状态已发生变化");
+  }
+  state.hands = result.hands;
+  state.exchangeAnimation = null;
   state.exchangeSelections = [[], [], [], []];
   state.exchangePrimarySuit = null;
   logMessage(`${exchangeDirectionLabel(direction)}换三张：你换出 ${sent.map(tileLabel).join("、")}，收到 ${result.received[0].map(tileLabel).join("、")}。`);
@@ -1930,6 +2177,7 @@ async function discardSelf(tile) {
   state.selfDrawEligible = false;
   state.hands[0] = removeOne(state.hands[0], tile);
   state.discards[0].push(tile);
+  state.turnPlayerIndex = null;
   state.awaitingPlayerDiscard = false;
   logMessage(`你打出 ${tileLabel(tile)}。`);
   render();
@@ -1955,6 +2203,7 @@ async function advanceFrom(previousPlayerIndex) {
       await finishDrawRound();
       return;
     }
+    state.turnPlayerIndex = playerIndex;
     state.turnDrawnTiles[playerIndex] = drawn;
     state.turnWinContexts[playerIndex] = state.wall.length === 0 ? "haiDi" : null;
 
@@ -2024,6 +2273,7 @@ async function advanceFrom(previousPlayerIndex) {
     state.turnDrawnTiles[playerIndex] = null;
     state.hands[playerIndex] = removeOne(state.hands[playerIndex], decision.discard);
     state.discards[playerIndex].push(decision.discard);
+    state.turnPlayerIndex = null;
     logMessage(`${PLAYER_NAMES[playerIndex]} 打出 ${decision.discardLabel}。`);
     render();
     await playTileSound(playerIndex, decision.discard);
@@ -2036,8 +2286,8 @@ async function advanceFrom(previousPlayerIndex) {
 }
 
 function nextActivePlayer(playerIndex) {
-  for (let offset = 1; offset <= 4; offset += 1) {
-    const candidate = (playerIndex + offset) % 4;
+  const candidates = [...playersAfter(playerIndex), playerIndex];
+  for (const candidate of candidates) {
     if (isPlayerActive(candidate)) {
       return candidate;
     }
@@ -2046,7 +2296,7 @@ function nextActivePlayer(playerIndex) {
 }
 
 function playersAfter(playerIndex) {
-  return [1, 2, 3].map((offset) => (playerIndex + offset) % 4);
+  return turnOrderFrom(playerIndex).slice(1);
 }
 
 function discardWinContext(discardContext) {
@@ -2166,6 +2416,7 @@ async function executePeng(playerIndex, discarderIndex, tile) {
   if (!ruleset.gameplay.allowPeng || !canClaimPeng(playerIndex, tile) || countHandTile(playerIndex, tile) < 2) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}不能碰${tileLabel(tile)}`);
   }
+  state.turnPlayerIndex = playerIndex;
   state.hands[playerIndex] = removeOne(removeOne(state.hands[playerIndex], tile), tile);
   removeLastDiscard(discarderIndex, tile);
   state.melds[playerIndex].push({
@@ -2206,6 +2457,7 @@ async function executeDiscardGang(playerIndex, discarderIndex, tile) {
   if (!ruleset.gameplay.allowGang || !canUseExposedMeld(playerIndex, tile) || countHandTile(playerIndex, tile) < 3) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}不能杠${tileLabel(tile)}`);
   }
+  state.turnPlayerIndex = playerIndex;
   state.hands[playerIndex] = removeTilesLocal(state.hands[playerIndex], [tile, tile, tile]);
   removeLastDiscard(discarderIndex, tile);
   state.melds[playerIndex].push({
@@ -2264,6 +2516,7 @@ async function executeSelfGang(playerIndex, option) {
   if (matchedOption === undefined) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}当前不能${gangOptionLabel(option)}`);
   }
+  state.turnPlayerIndex = playerIndex;
   if (matchedOption.type === "added" && currentRuleset().gameplay.allowRobGang) {
     const robbed = await resolveRobGang(playerIndex, matchedOption);
     if (robbed) {
@@ -2293,6 +2546,7 @@ async function resolveRobGang(gangPlayerIndex, option) {
   }
   const botWinnerIndices = candidates.filter((playerIndex) => playerIndex !== 0);
   if (candidates.includes(0)) {
+    state.turnPlayerIndex = null;
     state.pendingHu = {
       type: "robGang",
       discarderIndex: gangPlayerIndex,
@@ -2327,6 +2581,7 @@ async function resolveRobGang(gangPlayerIndex, option) {
 }
 
 async function completeSelfGang(playerIndex, option) {
+  state.turnPlayerIndex = playerIndex;
   let meldIndex;
   if (option.type === "concealed") {
     state.hands[playerIndex] = removeTilesLocal(state.hands[playerIndex], [option.tile, option.tile, option.tile, option.tile]);
@@ -2376,6 +2631,7 @@ async function continueAfterGang(playerIndex) {
     await finishDrawRound();
     return;
   }
+  state.turnPlayerIndex = playerIndex;
   state.turnDrawnTiles[playerIndex] = drawn;
   state.turnWinContexts[playerIndex] = "gangShangHua";
   logMessage(`${PLAYER_NAMES[playerIndex]}杠后补牌。`);
@@ -2422,6 +2678,7 @@ async function continuePostWinSelfTurn(allowHu, drawnTile) {
   if (!shouldAutoplaySelfAfterWin()) {
     throw new Error("当前不是胡牌后自动行牌状态");
   }
+  state.turnPlayerIndex = 0;
   state.postMeldAction = null;
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = allowHu;
@@ -2433,7 +2690,7 @@ async function continuePostWinSelfTurn(allowHu, drawnTile) {
     return;
   }
 
-  if (selfGangOptions(0).length > 0) {
+  if (allowHu && selfGangOptions(0).length > 0) {
     state.pendingPostWinGang = { allowHu, drawnTile };
     state.awaitingPlayerDiscard = true;
     logMessage("你已胡牌，当前可杠；请主动选择杠或过，15 秒后自动出牌。");
@@ -2447,6 +2704,8 @@ async function continuePostWinSelfTurn(allowHu, drawnTile) {
 
 async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   const ruleset = currentRuleset();
+  state.turnPlayerIndex = playerIndex;
+  renderTurnIndicator();
   const decision = await window.mahjongAI.recommendDiscard({
     rulesetId: ruleset.id,
     hand: state.hands[playerIndex],
@@ -2483,6 +2742,7 @@ async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   state.turnDrawnTiles[playerIndex] = null;
   state.hands[playerIndex] = removeOne(state.hands[playerIndex], discard);
   state.discards[playerIndex].push(discard);
+  state.turnPlayerIndex = null;
   logMessage(`${PLAYER_NAMES[playerIndex]}打出${tileLabel(discard)}。`);
   render();
   await playTileSound(playerIndex, discard);
@@ -2681,7 +2941,7 @@ async function claimGang() {
     await executeDiscardGang(0, claim.discarderIndex, claim.tile);
     return;
   }
-  if (!canSelfDiscard() && state.pendingPostWinGang === null) {
+  if (!canSelfGang()) {
     throw new Error("当前不能杠牌");
   }
   const options = selfGangOptions(0);
@@ -2840,6 +3100,7 @@ async function registerWins(entries, settlement) {
     return { ...entry, score };
   });
 
+  state.turnPlayerIndex = null;
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
   state.pendingPostWinGang = null;
@@ -2893,6 +3154,8 @@ async function registerWins(entries, settlement) {
 
 async function finishDrawRound() {
   const ruleset = currentRuleset();
+  state.turnPlayerIndex = null;
+  renderTurnIndicator();
   const activePlayers = activePlayerIndices();
   const flowerPigs = ruleset.gameplay.settleFlowerPigOnDraw
     ? activePlayers.filter((playerIndex) => hasDingqueTilesLocal(
@@ -3069,6 +3332,8 @@ function endRound(message) {
   clearMeldEffects();
   state.roundOver = true;
   state.awaitingExchange = false;
+  state.exchangeAnimation = null;
+  state.turnPlayerIndex = null;
   state.awaitingPlayerDiscard = false;
   state.pendingHu = null;
   state.pendingClaim = null;
