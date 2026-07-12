@@ -1139,10 +1139,10 @@ body {
   transform: rotate(-45deg);
 }
 
-.wind-north { top: 11px; left: 74px; }
-.wind-east { top: 73px; right: 13px; color: #ffe18b; text-shadow: 0 0 8px rgba(255, 203, 78, 0.65); }
-.wind-south { bottom: 11px; left: 74px; }
-.wind-west { top: 73px; left: 13px; }
+.wind-north { top: 24px; left: 25px; }
+.wind-east { top: 24px; right: 25px; color: #ffe18b; text-shadow: 0 0 8px rgba(255, 203, 78, 0.65); }
+.wind-south { right: 25px; bottom: 24px; }
+.wind-west { bottom: 24px; left: 25px; }
 
 .wall-card {
   z-index: 2;
@@ -1307,6 +1307,59 @@ body {
 }
 
 .tile.small::before { inset: 1px 1px 4px; }
+
+.won-tile {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 auto;
+  border-color: #ffd86a;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.88),
+    inset 0 -7px rgba(133, 83, 0, 0.16),
+    0 6px 0 #9a6d20,
+    0 10px 14px rgba(0, 0, 0, 0.48),
+    0 0 20px rgba(255, 200, 62, 0.76);
+}
+
+.won-tile::after {
+  content: attr(data-win-label);
+  position: absolute;
+  top: -17px;
+  left: 50%;
+  z-index: 6;
+  min-width: 25px;
+  padding: 2px 5px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 231, 154, 0.9);
+  border-radius: 9px;
+  color: #541b08;
+  background: linear-gradient(180deg, #fff3a5, #f2ad35);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.42), 0 0 12px rgba(255, 202, 70, 0.66);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.first-won-tile {
+  margin-left: 14px;
+}
+
+.closed-hand .won-tile {
+  align-self: center;
+}
+
+.closed-hand.vertical .won-tile {
+  margin-top: 13px;
+  margin-left: 0;
+  transform: rotate(90deg);
+}
+
+.closed-hand.vertical .won-tile::after {
+  top: 50%;
+  left: -23px;
+  transform: translateY(-50%) rotate(-90deg);
+}
 
 .tile.interactive:hover,
 .tile.recommended,

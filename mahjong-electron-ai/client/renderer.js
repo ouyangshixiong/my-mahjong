@@ -115,6 +115,7 @@ const state = {
   winCounts: [0, 0, 0, 0],
   winningHands: [[], [], [], []],
   wonTiles: [[], [], [], []],
+  visibleWonTiles: [],
   turnDrawnTiles: [null, null, null, null],
   lackSuits: [null, null, null, null],
   awaitingExchange: false,
@@ -513,7 +514,7 @@ function visibleTiles() {
   return [
     ...state.discards.flat(),
     ...state.melds.flat().flatMap((meld) => meld.tiles),
-    ...state.wonTiles.flat()
+    ...state.visibleWonTiles
   ];
 }
 
@@ -1300,6 +1301,25 @@ function createRiverTile(tile, index, tileCount) {
   return element;
 }
 
+function createWonTile(tile, playerIndex, winIndex) {
+  const element = createTile(tile, playerIndex === 0 ? "normal" : "small", null);
+  element.classList.add("won-tile");
+  element.dataset.winLabel = `胡${winIndex + 1}`;
+  element.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}第 ${winIndex + 1} 次胡牌张：${tileLabel(tile)}`);
+  element.title = `第 ${winIndex + 1} 次胡牌：${tileLabel(tile)}`;
+  return element;
+}
+
+function renderedHandTiles(playerIndex, concealedTiles) {
+  const winningTiles = state.wonTiles[playerIndex].map((tile, winIndex) => (
+    createWonTile(tile, playerIndex, winIndex)
+  ));
+  if (winningTiles.length > 0) {
+    winningTiles[0].classList.add("first-won-tile");
+  }
+  return [...concealedTiles, ...winningTiles];
+}
+
 function wallSegmentCounts() {
   if (!Number.isInteger(state.wallInitialCount) || state.wallInitialCount < 0) {
     throw new Error(`牌墙初始张数非法：${state.wallInitialCount}`);
@@ -1413,7 +1433,7 @@ function render() {
       primarySuit,
       ruleset
     );
-    replaceChildren(nodes.selfHand, state.hands[0].map((tile) => {
+    const handTiles = state.hands[0].map((tile) => {
       const selected = selectionCounts[tile] !== undefined && selectionCounts[tile] > 0;
       if (selected) {
         selectionCounts[tile] -= 1;
@@ -1434,11 +1454,12 @@ function render() {
           : "请先选完定缺花色；该花色不足三张时可用其他花色补足";
       }
       return element;
-    }));
+    });
+    replaceChildren(nodes.selfHand, renderedHandTiles(0, handTiles));
   } else {
     const legalDiscards = canDiscard ? new Set(legalDiscardTilesLocal(state.hands[0], ruleset, state.lackSuits[0])) : new Set();
     const forcingDingque = canDiscard && hasDingqueTilesLocal(state.hands[0], ruleset, state.lackSuits[0]);
-    replaceChildren(nodes.selfHand, state.hands[0].map((tile) => {
+    const handTiles = state.hands[0].map((tile) => {
       const legal = canDiscard && legalDiscards.has(tile);
       const element = createTile(tile, "normal", legal ? {
         action: "discard",
@@ -1450,7 +1471,8 @@ function render() {
         element.title = `必须先打完定缺${suitLabelLocal(state.lackSuits[0])}`;
       }
       return element;
-    }));
+    });
+    replaceChildren(nodes.selfHand, renderedHandTiles(0, handTiles));
   }
   replaceChildren(nodes.selfRiver, state.discards[0].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
   replaceChildren(nodes.selfMelds, state.melds[0].map((meld, meldIndex) => createMeld(meld, 0, meldIndex)));
@@ -1459,7 +1481,7 @@ function render() {
     const handNode = nodes[`player${playerIndex}Hand`];
     const riverNode = nodes[`player${playerIndex}River`];
     const meldNode = nodes[`player${playerIndex}Melds`];
-    replaceChildren(handNode, state.hands[playerIndex].map(createTileBack));
+    replaceChildren(handNode, renderedHandTiles(playerIndex, state.hands[playerIndex].map(createTileBack)));
     replaceChildren(riverNode, state.discards[playerIndex].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
     replaceChildren(meldNode, state.melds[playerIndex].map((meld, meldIndex) => createMeld(meld, playerIndex, meldIndex)));
   }
@@ -1685,6 +1707,7 @@ async function startRound() {
   state.winCounts = [0, 0, 0, 0];
   state.winningHands = [[], [], [], []];
   state.wonTiles = [[], [], [], []];
+  state.visibleWonTiles = [];
   state.turnDrawnTiles = [null, null, null, null];
   state.lackSuits = [null, null, null, null];
   state.awaitingExchange = false;
@@ -2082,7 +2105,12 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
       }));
       settleGangPaoEvents(discarderIndex, gangEventIds);
       state.pendingGangEventIds[discarderIndex] = [];
-      await registerWins(entries, { type: "discard", payerIndex: discarderIndex });
+      await registerWins(entries, {
+        type: "discard",
+        source: "river",
+        payerIndex: discarderIndex,
+        winningTile: tile
+      });
       return false;
     }
   }
@@ -2286,7 +2314,12 @@ async function resolveRobGang(gangPlayerIndex, option) {
     winningHand: [...state.hands[playerIndex], option.tile],
     message: `${PLAYER_NAMES[playerIndex]}抢杠胡${PLAYER_NAMES[gangPlayerIndex]}的${tileLabel(option.tile)}。`,
     winContext: "qiangGang"
-  })), { type: "discard", payerIndex: gangPlayerIndex });
+  })), {
+    type: "discard",
+    source: "robGang",
+    payerIndex: gangPlayerIndex,
+    winningTile: option.tile
+  });
   if (!state.roundOver) {
     await advanceFrom(gangPlayerIndex);
   }
@@ -2560,7 +2593,12 @@ async function claimHu() {
       settleGangPaoEvents(pendingHu.discarderIndex, pendingHu.gangEventIds);
       state.pendingGangEventIds[pendingHu.discarderIndex] = [];
     }
-    await registerWins(entries, { type: "discard", payerIndex: pendingHu.discarderIndex });
+    await registerWins(entries, {
+      type: "discard",
+      source: pendingHu.type === "robGang" ? "robGang" : "river",
+      payerIndex: pendingHu.discarderIndex,
+      winningTile: pendingHu.tile
+    });
     if (!state.roundOver) {
       await advanceFrom(pendingHu.discarderIndex);
     }
@@ -2682,7 +2720,12 @@ async function passAction(automatic = false) {
           winningHand: [...state.hands[playerIndex], pendingHu.tile],
           message: `${PLAYER_NAMES[playerIndex]}抢杠胡${PLAYER_NAMES[pendingHu.discarderIndex]}的${tileLabel(pendingHu.tile)}。`,
           winContext: "qiangGang"
-        })), { type: "discard", payerIndex: pendingHu.discarderIndex });
+        })), {
+          type: "discard",
+          source: "robGang",
+          payerIndex: pendingHu.discarderIndex,
+          winningTile: pendingHu.tile
+        });
         if (!state.roundOver) {
           await advanceFrom(pendingHu.discarderIndex);
         }
@@ -2699,7 +2742,12 @@ async function passAction(automatic = false) {
         winningHand: [...state.hands[playerIndex], pendingHu.tile],
         message: `${PLAYER_NAMES[playerIndex]}胡了${PLAYER_NAMES[pendingHu.discarderIndex]}打出的${tileLabel(pendingHu.tile)}。`,
         winContext: pendingHu.winContext
-      })), { type: "discard", payerIndex: pendingHu.discarderIndex });
+      })), {
+        type: "discard",
+        source: "river",
+        payerIndex: pendingHu.discarderIndex,
+        winningTile: pendingHu.tile
+      });
       if (!state.roundOver) {
         await advanceFrom(pendingHu.discarderIndex);
       }
@@ -2749,6 +2797,17 @@ async function registerWins(entries, settlement) {
   if (settlement.type === "selfDraw" && entries.length !== 1) {
     throw new Error("self-draw settlement requires exactly one winner");
   }
+  if (settlement.type === "discard") {
+    if (!Number.isInteger(settlement.payerIndex)) {
+      throw new Error("点炮结算必须提供付款玩家");
+    }
+    if (!TILE_IDS.includes(settlement.winningTile)) {
+      throw new Error("点炮结算必须提供有效胡牌张");
+    }
+    if (!["river", "robGang"].includes(settlement.source)) {
+      throw new Error(`未知胡牌张来源：${settlement.source}`);
+    }
+  }
   const playerIndices = entries.map((entry) => entry.playerIndex);
   if (new Set(playerIndices).size !== playerIndices.length) {
     throw new Error("registerWins contains duplicate players");
@@ -2784,6 +2843,13 @@ async function registerWins(entries, settlement) {
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;
   state.pendingPostWinGang = null;
+  if (settlement.type === "discard" && settlement.source === "river") {
+    removeLastDiscard(settlement.payerIndex, settlement.winningTile);
+  }
+  const visibleWinningTile = settlement.type === "selfDraw"
+    ? scoredEntries[0].winningTile
+    : settlement.winningTile;
+  state.visibleWonTiles.push(visibleWinningTile);
   for (const entry of scoredEntries) {
     const baseAmount = 2 ** entry.score.cappedFan;
     if (settlement.type === "selfDraw") {
@@ -2793,9 +2859,6 @@ async function registerWins(entries, settlement) {
         transferScore(payerIndex, entry.playerIndex, amount, "自摸", null);
       }
     } else {
-      if (!Number.isInteger(settlement.payerIndex)) {
-        throw new Error("点炮结算必须提供付款玩家");
-      }
       transferScore(settlement.payerIndex, entry.playerIndex, baseAmount, "点炮", null);
     }
   }
@@ -2804,10 +2867,11 @@ async function registerWins(entries, settlement) {
     state.winners[entry.playerIndex] = true;
     state.winCounts[entry.playerIndex] += 1;
     state.winningHands[entry.playerIndex].push(sortTiles(entry.winningHand));
-    if (settlement.type === "selfDraw" && ruleset.gameplay.allowRepeatWins) {
+    const winningTile = settlement.type === "selfDraw" ? entry.winningTile : settlement.winningTile;
+    if (settlement.type === "selfDraw") {
       state.hands[entry.playerIndex] = removeOne(state.hands[entry.playerIndex], entry.winningTile);
-      state.wonTiles[entry.playerIndex].push(entry.winningTile);
     }
+    state.wonTiles[entry.playerIndex].push(winningTile);
     state.turnWinContexts[entry.playerIndex] = null;
     state.turnDrawnTiles[entry.playerIndex] = null;
     state.pendingGangEventIds[entry.playerIndex] = [];
