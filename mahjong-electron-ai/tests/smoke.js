@@ -149,6 +149,20 @@ async function main() {
       "assets/sounds/nv/hu.mp3",
       "assets/sounds/nv/peng.mp3",
       "assets/sounds/nv/gang.mp3",
+      "assets/sounds/nv/patterns/ping-hu.wav",
+      "assets/sounds/nv/patterns/ji-chu-hu.wav",
+      "assets/sounds/nv/patterns/dui-dui-hu.wav",
+      "assets/sounds/nv/patterns/peng-peng-hu.wav",
+      "assets/sounds/nv/patterns/qing-yi-se.wav",
+      "assets/sounds/nv/patterns/qi-dui.wav",
+      "assets/sounds/nv/patterns/hong-zhong.wav",
+      "assets/sounds/nv/patterns/gen.wav",
+      "assets/sounds/nv/patterns/gang.wav",
+      "assets/sounds/nv/patterns/jin-gou-diao.wav",
+      "assets/sounds/nv/patterns/gang-shang-hua.wav",
+      "assets/sounds/nv/patterns/gang-shang-pao.wav",
+      "assets/sounds/nv/patterns/qiang-gang.wav",
+      "assets/sounds/nv/patterns/hai-di.wav",
       "assets/sounds/action-prompt.wav"
     ]) {
       assert.equal(fs.existsSync(path.join(projectRoot, relativePath)), true, `${relativePath} must exist`);

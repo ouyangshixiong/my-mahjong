@@ -53,17 +53,38 @@ const EXCHANGE_DIRECTION_LABELS = Object.freeze({
   counterclockwise: "逆时针",
   across: "对家"
 });
+const HU_TO_PATTERN_PAUSE_MS = 550;
+const PATTERN_ANNOUNCEMENT_PAUSE_MS = 300;
+const WIN_RESULT_PAUSE_MS = 1200;
 const TILE_ART_DIRECTORY = "../assets/img/tiles";
 const PLAYER_RESPONSE_TIMEOUT_MS = 15000;
 const ACTION_SOUND_PATHS = Object.freeze({
+  hu: "../assets/sounds/nv/hu.mp3",
   peng: "../assets/sounds/nv/peng.mp3",
   gang: "../assets/sounds/nv/gang.mp3",
   prompt: "../assets/sounds/action-prompt.wav"
 });
 const ACTION_SOUND_LABELS = Object.freeze({
+  hu: "胡",
   peng: "碰",
   gang: "杠",
   prompt: "操作提示"
+});
+const WIN_PATTERN_SOUND_PATHS = Object.freeze({
+  "平胡": "../assets/sounds/nv/patterns/ping-hu.wav",
+  "基础胡": "../assets/sounds/nv/patterns/ji-chu-hu.wav",
+  "对对胡": "../assets/sounds/nv/patterns/dui-dui-hu.wav",
+  "碰碰胡": "../assets/sounds/nv/patterns/peng-peng-hu.wav",
+  "清一色": "../assets/sounds/nv/patterns/qing-yi-se.wav",
+  "七对": "../assets/sounds/nv/patterns/qi-dui.wav",
+  "红中": "../assets/sounds/nv/patterns/hong-zhong.wav",
+  "根": "../assets/sounds/nv/patterns/gen.wav",
+  "杠": "../assets/sounds/nv/patterns/gang.wav",
+  "金钩钓": "../assets/sounds/nv/patterns/jin-gou-diao.wav",
+  "杠上花": "../assets/sounds/nv/patterns/gang-shang-hua.wav",
+  "杠上炮": "../assets/sounds/nv/patterns/gang-shang-pao.wav",
+  "抢杠": "../assets/sounds/nv/patterns/qiang-gang.wav",
+  "海底": "../assets/sounds/nv/patterns/hai-di.wav"
 });
 const TILE_SOUND_PATHS = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => {
   const rank = Number.parseInt(tile.id.slice(1), 10);
@@ -187,6 +208,13 @@ const tileSounds = Object.freeze(Object.fromEntries(
     const audio = new Audio(path);
     audio.preload = "auto";
     return [tile, audio];
+  })
+));
+const winPatternSounds = Object.freeze(Object.fromEntries(
+  Object.entries(WIN_PATTERN_SOUND_PATHS).map(([patternName, path]) => {
+    const audio = new Audio(path);
+    audio.preload = "auto";
+    return [patternName, audio];
   })
 ));
 
@@ -998,6 +1026,60 @@ function playActionSound(action) {
     logMessage(`${ACTION_SOUND_LABELS[action]}声音播放失败：${error.message}`);
     render();
   });
+}
+
+function playAnnouncementAudio(playerIndex, audio, label) {
+  const voiceProfile = PLAYER_VOICE_PROFILES[playerIndex];
+  if (voiceProfile === undefined) {
+    throw new Error(`未知玩家声音：${playerIndex}`);
+  }
+  audio.pause();
+  audio.currentTime = 0;
+  audio.preservesPitch = false;
+  audio.playbackRate = voiceProfile.playbackRate;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
+    };
+    const handleEnded = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error(`${PLAYER_NAMES[playerIndex]}${voiceProfile.name}声线播放“${label}”失败，媒体错误码：${audio.error.code}`));
+    };
+    audio.addEventListener("ended", handleEnded, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    audio.play().catch((error) => {
+      cleanup();
+      reject(new Error(`${PLAYER_NAMES[playerIndex]}${voiceProfile.name}声线播放“${label}”失败：${error.message}`));
+    });
+  });
+}
+
+async function playWinAnnouncement(playerIndex, patterns) {
+  if (!Array.isArray(patterns) || patterns.length === 0) {
+    throw new Error("胡牌语音缺少番型");
+  }
+  await playAnnouncementAudio(playerIndex, actionSounds.hu, ACTION_SOUND_LABELS.hu);
+  await sleep(HU_TO_PATTERN_PAUSE_MS);
+  const specialPatterns = patterns.filter((pattern) => pattern.id !== "baseHu");
+  const announcedPatterns = specialPatterns.length > 0 ? specialPatterns : patterns;
+  for (let index = 0; index < announcedPatterns.length; index += 1) {
+    const pattern = announcedPatterns[index];
+    const announcementName = pattern.name.replace(/x\d+$/u, "");
+    const audio = winPatternSounds[announcementName];
+    if (audio === undefined) {
+      throw new Error(`未配置番型语音：${pattern.id}（${pattern.name}）`);
+    }
+    await playAnnouncementAudio(playerIndex, audio, pattern.name);
+    if (index < announcedPatterns.length - 1) {
+      await sleep(PATTERN_ANNOUNCEMENT_PAUSE_MS);
+    }
+  }
+  await sleep(WIN_RESULT_PAUSE_MS);
 }
 
 function playTileSound(playerIndex, tile) {
@@ -2649,6 +2731,9 @@ async function registerWins(entries, settlement) {
     return { ...entry, score };
   });
 
+  state.awaitingPlayerDiscard = false;
+  state.selfDrawEligible = false;
+  state.pendingPostWinGang = null;
   for (const entry of scoredEntries) {
     const baseAmount = 2 ** entry.score.cappedFan;
     if (settlement.type === "selfDraw") {
@@ -2678,10 +2763,9 @@ async function registerWins(entries, settlement) {
     state.pendingGangEventIds[entry.playerIndex] = [];
     const patternNames = entry.score.patterns.map((pattern) => pattern.name).join("、");
     logMessage(`${entry.message} ${entry.score.cappedFan} 番（${patternNames}），本局第 ${state.winCounts[entry.playerIndex]} 次胡，当前 ${state.scores[entry.playerIndex]} 分。`);
+    render();
+    await playWinAnnouncement(entry.playerIndex, entry.score.patterns);
   }
-  state.awaitingPlayerDiscard = false;
-  state.selfDrawEligible = false;
-  state.pendingPostWinGang = null;
   if (ruleset.gameplay.roundEndMode === "winnerLimitOrWallEmpty") {
     if (!ruleset.gameplay.continueAfterWin || state.winners.filter(Boolean).length >= ruleset.gameplay.maxWinners) {
       endRound("牌局结束。");
