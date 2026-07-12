@@ -53,6 +53,7 @@ const EXCHANGE_DIRECTION_LABELS = Object.freeze({
   counterclockwise: "逆时针",
   across: "对家"
 });
+const EXCHANGE_RESULT_PAUSE_MS = 2000;
 const HU_TO_PATTERN_PAUSE_MS = 550;
 const PATTERN_ANNOUNCEMENT_PAUSE_MS = 300;
 const WIN_RESULT_PAUSE_MS = 1200;
@@ -1278,6 +1279,15 @@ function createWallTile() {
   return element;
 }
 
+function createRiverTile(tile, index, tileCount) {
+  const element = createTile(tile, "small", null);
+  element.classList.add("river-tile");
+  if (index === tileCount - 1) {
+    element.classList.add("latest-discard");
+  }
+  return element;
+}
+
 function wallSegmentCounts() {
   if (!Number.isInteger(state.wallInitialCount) || state.wallInitialCount < 0) {
     throw new Error(`牌墙初始张数非法：${state.wallInitialCount}`);
@@ -1319,7 +1329,7 @@ function createMeld(meld, playerIndex, meldIndex) {
     throw new Error(`Invalid ${meld.type} tile count`);
   }
   const element = document.createElement("div");
-  element.className = "meld";
+  element.className = `meld meld-${meld.type} meld-player-${playerIndex} meld-source-${meld.source}`;
   element.title = meld.type === "peng" ? "碰" : "杠";
   const effect = state.meldEffects[playerIndex];
   if (effect !== null && effect.meldIndex === meldIndex && effect.type === meld.type) {
@@ -1328,7 +1338,30 @@ function createMeld(meld, playerIndex, meldIndex) {
       ? `${meld.type === "peng" ? "碰" : "杠"} · 注意下一步`
       : meld.type === "peng" ? "碰" : "杠";
   }
-  element.append(...meld.tiles.map((tile) => createTile(tile, "small", null)));
+  const relativeSource = (meld.from - playerIndex + 4) % 4;
+  const claimedSlotIndex = meld.source === "concealed"
+    ? 1
+    : ({ 1: 2, 2: 1, 3: 0 })[relativeSource];
+  if (!Number.isInteger(claimedSlotIndex)) {
+    throw new Error(`Invalid meld source direction: ${relativeSource}`);
+  }
+  const slots = meld.tiles.slice(0, 3).map((tile, tileIndex) => {
+    const slot = document.createElement("span");
+    slot.className = "meld-slot";
+    const meldTile = createTile(tile, "small", null);
+    if (meld.source !== "concealed" && tileIndex === claimedSlotIndex) {
+      meldTile.classList.add("claimed-tile");
+    }
+    slot.append(meldTile);
+    return slot;
+  });
+  if (meld.type === "gang") {
+    const stackedTile = createTile(meld.tiles[3], "small", null);
+    stackedTile.classList.add("meld-stacked-tile");
+    slots[claimedSlotIndex].classList.add("stacked-slot");
+    slots[claimedSlotIndex].append(stackedTile);
+  }
+  element.append(...slots);
   return element;
 }
 
@@ -1407,7 +1440,7 @@ function render() {
       return element;
     }));
   }
-  replaceChildren(nodes.selfRiver, state.discards[0].map((tile) => createTile(tile, "small", null)));
+  replaceChildren(nodes.selfRiver, state.discards[0].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
   replaceChildren(nodes.selfMelds, state.melds[0].map((meld, meldIndex) => createMeld(meld, 0, meldIndex)));
 
   for (const playerIndex of [1, 2, 3]) {
@@ -1415,7 +1448,7 @@ function render() {
     const riverNode = nodes[`player${playerIndex}River`];
     const meldNode = nodes[`player${playerIndex}Melds`];
     replaceChildren(handNode, state.hands[playerIndex].map(createTileBack));
-    replaceChildren(riverNode, state.discards[playerIndex].map((tile) => createTile(tile, "small", null)));
+    replaceChildren(riverNode, state.discards[playerIndex].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
     replaceChildren(meldNode, state.melds[playerIndex].map((meld, meldIndex) => createMeld(meld, playerIndex, meldIndex)));
   }
 
@@ -1818,6 +1851,7 @@ async function confirmExchange() {
   state.exchangePrimarySuit = null;
   logMessage(`${exchangeDirectionLabel(direction)}换三张：你换出 ${sent.map(tileLabel).join("、")}，收到 ${result.received[0].map(tileLabel).join("、")}。`);
   render();
+  await sleep(EXCHANGE_RESULT_PAUSE_MS);
   if (ruleset.gameplay.requiresDingque && !ruleset.gameplay.dingqueBeforeExchange) {
     await beginDingquePhase();
     return;

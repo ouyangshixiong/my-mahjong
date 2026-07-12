@@ -17,15 +17,38 @@
       </div>
 
       <section class="table">
+        <div class="table-atmosphere" aria-hidden="true"></div>
+        <header class="game-hud" aria-label="牌局状态">
+          <div class="game-brand">
+            <span class="brand-mark">雀</span>
+            <span><strong>天府雀局</strong><small>MAHJONG ARENA</small></span>
+          </div>
+          <div class="hud-status">
+            <span class="hud-chip"><i class="signal-icon"></i>在线</span>
+            <span class="hud-chip">东风局</span>
+            <span class="hud-chip hud-room">训练场 · 01</span>
+          </div>
+          <div class="hud-actions" aria-hidden="true">
+            <span class="hud-icon">♪</span>
+            <span class="hud-icon">⚙</span>
+          </div>
+        </header>
+
         <div class="opponent opponent-top">
-          <div class="seat-name">对家 <span id="player2LackSuit" class="lack-suit-badge"></span> <span id="player2WinCount" class="win-count-badge"></span> <span id="player2Score" class="score-badge">0分</span></div>
+          <div class="player-card">
+            <span class="seat-avatar avatar-top">北</span>
+            <span class="seat-copy"><b>对家 · 玄武</b><small><span id="player2LackSuit" class="lack-suit-badge"></span> <span id="player2WinCount" class="win-count-badge"></span> <span id="player2Score" class="score-badge">0分</span></small></span>
+          </div>
           <div id="player2Hand" class="closed-hand"></div>
           <div id="player2Melds" class="melds"></div>
           <div id="player2River" class="river"></div>
         </div>
 
         <div class="opponent opponent-left">
-          <div class="seat-name">上家 <span id="player1LackSuit" class="lack-suit-badge"></span> <span id="player1WinCount" class="win-count-badge"></span> <span id="player1Score" class="score-badge">0分</span></div>
+          <div class="player-card">
+            <span class="seat-avatar avatar-left">西</span>
+            <span class="seat-copy"><b>上家 · 白虎</b><small><span id="player1LackSuit" class="lack-suit-badge"></span> <span id="player1WinCount" class="win-count-badge"></span> <span id="player1Score" class="score-badge">0分</span></small></span>
+          </div>
           <div id="player1Hand" class="closed-hand vertical"></div>
           <div id="player1Melds" class="melds"></div>
           <div id="player1River" class="river vertical-river"></div>
@@ -49,9 +72,18 @@
               <button type="button" data-lack-suit="s">缺条</button>
             </div>
           </div>
-          <div class="wall-card">
-            <span id="wallCount">0</span>
-            <small>墙牌</small>
+          <div class="round-console">
+            <div class="wind-ring" aria-hidden="true">
+              <span class="wind wind-north">北</span>
+              <span class="wind wind-east">东</span>
+              <span class="wind wind-south">南</span>
+              <span class="wind wind-west">西</span>
+            </div>
+            <div class="wall-card">
+              <small>剩余</small>
+              <span id="wallCount">0</span>
+              <small>张牌</small>
+            </div>
           </div>
           <div id="messageLog" class="message-log"></div>
         </div>
@@ -84,14 +116,20 @@
         </div>
 
         <div class="opponent opponent-right">
-          <div class="seat-name">下家 <span id="player3LackSuit" class="lack-suit-badge"></span> <span id="player3WinCount" class="win-count-badge"></span> <span id="player3Score" class="score-badge">0分</span></div>
+          <div class="player-card">
+            <span class="seat-avatar avatar-right">南</span>
+            <span class="seat-copy"><b>下家 · 朱雀</b><small><span id="player3LackSuit" class="lack-suit-badge"></span> <span id="player3WinCount" class="win-count-badge"></span> <span id="player3Score" class="score-badge">0分</span></small></span>
+          </div>
           <div id="player3Hand" class="closed-hand vertical"></div>
           <div id="player3Melds" class="melds"></div>
           <div id="player3River" class="river vertical-river"></div>
         </div>
 
         <div class="self-area">
-          <div class="self-rule-status">你的定缺：<span id="selfLackSuit">未定</span> <span id="selfWinCount" class="win-count-badge"></span> · <span id="selfScore" class="score-badge">0分</span></div>
+          <div class="self-player-card">
+            <span class="seat-avatar avatar-self">东</span>
+            <span class="seat-copy"><b>你 · 青龙</b><small>定缺：<span id="selfLackSuit">未定</span> <span id="selfWinCount" class="win-count-badge"></span> · <span id="selfScore" class="score-badge">0分</span></small></span>
+          </div>
           <div id="selfRiver" class="river self-river"></div>
           <div id="selfMelds" class="melds self-melds"></div>
           <div id="selfHand" class="hand"></div>
