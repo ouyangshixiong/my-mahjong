@@ -1803,9 +1803,10 @@ function render() {
   renderTurnIndicator();
 
   const canDiscard = canSelfDiscard();
+  const selfTurnDrawnTile = state.turnDrawnTiles[0];
   const selfHandEntries = window.mahjongAI.arrangeHandForDrawPreview(
     state.hands[0],
-    state.selfDrawEffect === null ? null : state.selfDrawEffect.tile
+    selfTurnDrawnTile
   );
   if (state.awaitingExchange) {
     const selectionCounts = Object.create(null);
@@ -1843,6 +1844,9 @@ function render() {
         recommended: false
       } : null);
       if (isDrawnTile) {
+        element.classList.add("turn-drawn-tile");
+      }
+      if (isDrawnTile && state.selfDrawEffect !== null) {
         element.classList.add("drawn-tile-effect");
       }
       if (!interactive) {
@@ -1865,6 +1869,9 @@ function render() {
         recommended: state.recommendedTile === tile
       } : null);
       if (isDrawnTile) {
+        element.classList.add("turn-drawn-tile");
+      }
+      if (isDrawnTile && state.selfDrawEffect !== null) {
         element.classList.add("drawn-tile-effect");
       }
       if (forcingDingque && !legalDiscards.has(tile)) {

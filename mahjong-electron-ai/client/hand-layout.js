@@ -26,7 +26,7 @@ function arrangeHandForDrawPreview(hand, drawnTile) {
   }
   const [drawnEntry] = entries.splice(drawnIndex, 1);
   drawnEntry.isDrawnTile = true;
-  entries.unshift(drawnEntry);
+  entries.push(drawnEntry);
   return entries;
 }
 
