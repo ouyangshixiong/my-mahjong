@@ -22,8 +22,8 @@ const DEFAULT_RULESET_ID = "sichuan-xueliu";
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xueliu",
-    version: 2,
-    updatedAt: "2026-07-12T00:00:00+08:00",
+    version: 4,
+    updatedAt: "2026-07-13T00:00:00+08:00",
     name: "四川麻将血流成河",
     description: "三门 108 张，先定缺再换三张；胡牌后不退出，可重复胡牌并即时结算，直到牌墙摸完。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
@@ -56,12 +56,14 @@ const RULESETS = Object.freeze([
       gangPaoTransferMode: "refund",
       settleFlowerPigOnDraw: true,
       settleReadyHandsOnDraw: true,
+      drawSettlementPlayerScope: "nonWinners",
       wildcardTile: null,
       honorTilesEnabled: false,
       redCenterEnabled: false
     }),
     scoring: Object.freeze({
       aggregation: "sum",
+      basePoints: 100,
       baseFan: 0,
       maxFan: 3,
       selfDrawAddsBase: true,
@@ -70,8 +72,8 @@ const RULESETS = Object.freeze([
   }),
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 7,
-    updatedAt: "2026-07-10T00:00:00+08:00",
+    version: 9,
+    updatedAt: "2026-07-13T00:00:00+08:00",
     name: "四川麻将血战",
     description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
@@ -104,12 +106,14 @@ const RULESETS = Object.freeze([
       gangPaoTransferMode: "refund",
       settleFlowerPigOnDraw: true,
       settleReadyHandsOnDraw: true,
+      drawSettlementPlayerScope: "nonWinners",
       wildcardTile: null,
       honorTilesEnabled: false,
       redCenterEnabled: false
     }),
     scoring: Object.freeze({
       aggregation: "sum",
+      basePoints: 100,
       baseFan: 0,
       maxFan: 3,
       selfDrawAddsBase: true,
@@ -118,8 +122,8 @@ const RULESETS = Object.freeze([
   }),
   Object.freeze({
     id: "hongzhong",
-    version: 2,
-    updatedAt: "2026-07-08T19:20:00+08:00",
+    version: 4,
+    updatedAt: "2026-07-13T00:00:00+08:00",
     name: "红中麻将",
     description: "三门加红中 112 张，红中作癞子，可补顺子、刻子、对子。",
     tileCounts: Object.freeze({
@@ -155,12 +159,14 @@ const RULESETS = Object.freeze([
       gangPaoTransferMode: "none",
       settleFlowerPigOnDraw: false,
       settleReadyHandsOnDraw: false,
+      drawSettlementPlayerScope: "none",
       wildcardTile: "z5",
       honorTilesEnabled: false,
       redCenterEnabled: true
     }),
     scoring: Object.freeze({
       aggregation: "sum",
+      basePoints: 100,
       baseFan: 1,
       maxFan: 24,
       selfDrawAddsBase: false,
@@ -223,6 +229,7 @@ function assertRulesetShape(ruleset) {
     "gangPaoTransferMode",
     "settleFlowerPigOnDraw",
     "settleReadyHandsOnDraw",
+    "drawSettlementPlayerScope",
     "honorTilesEnabled",
     "redCenterEnabled"
   ]) {
@@ -267,6 +274,15 @@ function assertRulesetShape(ruleset) {
   }
   if (!["winnerLimitOrWallEmpty", "wallEmpty"].includes(ruleset.gameplay.roundEndMode)) {
     throw new Error(`ruleset ${ruleset.id} gameplay.roundEndMode is invalid`);
+  }
+  if (!["none", "activePlayers", "nonWinners"].includes(ruleset.gameplay.drawSettlementPlayerScope)) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.drawSettlementPlayerScope is invalid`);
+  }
+  const hasDrawSettlement = ruleset.gameplay.refundGangOnDrawNotReady
+    || ruleset.gameplay.settleFlowerPigOnDraw
+    || ruleset.gameplay.settleReadyHandsOnDraw;
+  if (hasDrawSettlement === (ruleset.gameplay.drawSettlementPlayerScope === "none")) {
+    throw new Error(`ruleset ${ruleset.id} draw settlement switches conflict with its player scope`);
   }
   if (ruleset.gameplay.roundEndMode === "wallEmpty" && ruleset.gameplay.maxWinners !== 0) {
     throw new Error(`ruleset ${ruleset.id} wall-empty mode must use maxWinners 0`);
@@ -320,6 +336,9 @@ function assertRulesetShape(ruleset) {
   }
   if (!Array.isArray(ruleset.scoring.patterns)) {
     throw new Error(`ruleset ${ruleset.id} scoring.patterns must be an array`);
+  }
+  if (!Number.isInteger(ruleset.scoring.basePoints) || ruleset.scoring.basePoints <= 0) {
+    throw new Error(`ruleset ${ruleset.id} scoring.basePoints must be a positive integer`);
   }
   if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
     throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);

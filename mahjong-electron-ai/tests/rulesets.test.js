@@ -1,7 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { removeOneTile, scoreHand, sortTiles } = require("../server/mahjong");
-const { DEFAULT_RULESET_ID, getRuleset, getRulesets } = require("../server/rulesets");
+const {
+  DEFAULT_RULESET_ID,
+  assertRulesetShape,
+  getRuleset,
+  getRulesets
+} = require("../server/rulesets");
 
 test("blood-flow is the explicit default ruleset", () => {
   assert.equal(DEFAULT_RULESET_ID, "sichuan-xueliu");
@@ -12,6 +17,37 @@ test("blood-flow is the explicit default ruleset", () => {
   assert.equal(ruleset.gameplay.allowPengAfterWin, false);
   assert.equal(ruleset.gameplay.roundEndMode, "wallEmpty");
   assert.equal(ruleset.gameplay.maxWinners, 0);
+  assert.equal(ruleset.gameplay.drawSettlementPlayerScope, "nonWinners");
+  assert.equal(ruleset.scoring.basePoints, 100);
+});
+
+test("draw settlement participant scope is defined by every server ruleset", () => {
+  for (const ruleset of getRulesets()) {
+    assert.ok(["none", "activePlayers", "nonWinners"].includes(ruleset.gameplay.drawSettlementPlayerScope));
+  }
+  assert.equal(getRuleset("hongzhong").gameplay.drawSettlementPlayerScope, "none");
+});
+
+test("server rejects draw settlement switches that conflict with their participant scope", () => {
+  const enabledWithoutPlayers = getRuleset("sichuan-xueliu");
+  enabledWithoutPlayers.gameplay.drawSettlementPlayerScope = "none";
+  assert.throws(
+    () => assertRulesetShape(enabledWithoutPlayers),
+    /draw settlement switches conflict/
+  );
+
+  const disabledWithPlayers = getRuleset("hongzhong");
+  disabledWithPlayers.gameplay.drawSettlementPlayerScope = "nonWinners";
+  assert.throws(
+    () => assertRulesetShape(disabledWithPlayers),
+    /draw settlement switches conflict/
+  );
+});
+
+test("every ruleset uses a 100-point scoring base", () => {
+  for (const ruleset of getRulesets()) {
+    assert.equal(ruleset.scoring.basePoints, 100);
+  }
 });
 
 test("blood-flow permits the same ready hand to self-draw repeatedly", () => {

@@ -34,6 +34,7 @@ async function main() {
     assert.equal(xueliu.ruleset.gameplay.allowRepeatWins, true);
     assert.equal(xueliu.ruleset.gameplay.allowPengAfterWin, false);
     assert.equal(xueliu.ruleset.gameplay.roundEndMode, "wallEmpty");
+    assert.equal(xueliu.ruleset.gameplay.drawSettlementPlayerScope, "nonWinners");
 
     const xuezhan = await fetchJson(`${baseUrl}/rulesets/sichuan-xuezhan`);
     assert.equal(xuezhan.ruleset.tileCounts.z5, undefined);
@@ -52,8 +53,12 @@ async function main() {
     assert.equal(xuezhan.ruleset.gameplay.winnerExitsAfterWin, true);
     assert.equal(xuezhan.ruleset.gameplay.allowRepeatWins, false);
     assert.equal(xuezhan.ruleset.gameplay.roundEndMode, "winnerLimitOrWallEmpty");
+    assert.equal(xuezhan.ruleset.gameplay.drawSettlementPlayerScope, "nonWinners");
     assert.equal(xuezhan.ruleset.gameplay.gangPaoTransferMode, "refund");
     assert.equal(xuezhan.ruleset.scoring.aggregation, "sum");
+
+    const hongzhong = await fetchJson(`${baseUrl}/rulesets/hongzhong`);
+    assert.equal(hongzhong.ruleset.gameplay.drawSettlementPlayerScope, "none");
 
     const exchange = await postJson(`${baseUrl}/ai/exchange`, {
       rulesetId: "sichuan-xuezhan",

@@ -35,20 +35,20 @@
         </header>
 
         <div class="opponent opponent-top">
-          <div class="player-card">
+          <button class="player-card score-history-trigger" type="button" data-player-index="2" aria-haspopup="dialog" aria-controls="scoreHistoryModal">
             <span id="player2LackSuit" class="seat-avatar avatar-top"></span>
             <span class="seat-copy"><b>对家 · 玄武</b><small><span id="player2WinCount" class="win-count-badge"></span> <span id="player2Score" class="score-badge">0分</span></small></span>
-          </div>
+          </button>
           <div id="player2Hand" class="closed-hand"></div>
           <div id="player2WonTiles" class="won-tiles won-tiles-top" role="list" aria-label="对家胡牌张"></div>
           <div id="player2Melds" class="melds"></div>
         </div>
 
         <div class="opponent opponent-left">
-          <div class="player-card">
+          <button class="player-card score-history-trigger" type="button" data-player-index="1" aria-haspopup="dialog" aria-controls="scoreHistoryModal">
             <span id="player1LackSuit" class="seat-avatar avatar-left"></span>
             <span class="seat-copy"><b>上家 · 白虎</b><small><span id="player1WinCount" class="win-count-badge"></span> <span id="player1Score" class="score-badge">0分</span></small></span>
-          </div>
+          </button>
           <div id="player1Hand" class="closed-hand vertical"></div>
           <div id="player1WonTiles" class="won-tiles won-tiles-left won-tiles-vertical" role="list" aria-label="上家胡牌张"></div>
           <div id="player1Melds" class="melds"></div>
@@ -91,7 +91,7 @@
               <small>张牌</small>
             </div>
           </div>
-          <div id="messageLog" class="message-log"></div>
+          <div id="messageLog" class="message-log" hidden aria-hidden="true"></div>
         </div>
 
         <div class="discard-field" aria-label="四家已出牌区域">
@@ -165,23 +165,38 @@
         </div>
 
         <div class="opponent opponent-right">
-          <div class="player-card">
+          <button class="player-card score-history-trigger" type="button" data-player-index="3" aria-haspopup="dialog" aria-controls="scoreHistoryModal">
             <span id="player3LackSuit" class="seat-avatar avatar-right"></span>
             <span class="seat-copy"><b>下家 · 朱雀</b><small><span id="player3WinCount" class="win-count-badge"></span> <span id="player3Score" class="score-badge">0分</span></small></span>
-          </div>
+          </button>
           <div id="player3Hand" class="closed-hand vertical"></div>
           <div id="player3WonTiles" class="won-tiles won-tiles-right won-tiles-vertical" role="list" aria-label="下家胡牌张"></div>
           <div id="player3Melds" class="melds"></div>
         </div>
 
         <div class="self-area">
-          <div class="self-player-card">
+          <button class="self-player-card score-history-trigger" type="button" data-player-index="0" aria-haspopup="dialog" aria-controls="scoreHistoryModal">
             <span id="selfLackSuit" class="seat-avatar avatar-self"></span>
             <span class="seat-copy"><b>你 · 青龙</b><small><span id="selfWinCount" class="win-count-badge"></span> <span id="selfScore" class="score-badge">0分</span></small></span>
-          </div>
+          </button>
           <div id="selfWonTiles" class="won-tiles won-tiles-self" role="list" aria-label="你的胡牌张"></div>
           <div id="selfMelds" class="melds self-melds"></div>
           <div id="selfHand" class="hand"></div>
+        </div>
+
+        <div id="scoreHistoryModal" class="score-history-modal" hidden>
+          <button id="scoreHistoryBackdrop" class="score-history-backdrop" type="button" aria-label="关闭分数明细"></button>
+          <section id="scoreHistoryDialog" class="score-history-dialog" role="dialog" aria-modal="true" aria-labelledby="scoreHistoryTitle">
+            <header class="score-history-header">
+              <div>
+                <small>本局计分明细</small>
+                <h2 id="scoreHistoryTitle"></h2>
+              </div>
+              <button id="scoreHistoryCloseButton" class="score-history-close" type="button" aria-label="关闭分数明细">×</button>
+            </header>
+            <div id="scoreHistorySummary" class="score-history-summary"></div>
+            <div id="scoreHistoryList" class="score-history-list"></div>
+          </section>
         </div>
       </section>
 

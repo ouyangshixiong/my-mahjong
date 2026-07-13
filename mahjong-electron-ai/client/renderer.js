@@ -111,6 +111,9 @@ const state = {
   discards: [[], [], [], []],
   melds: [[], [], [], []],
   scores: [0, 0, 0, 0],
+  scoreHistory: [[], [], [], []],
+  nextScoreTransactionId: 1,
+  openScoreHistoryPlayerIndex: null,
   gangLedger: [],
   nextGangEventId: 1,
   pendingGangEventIds: [[], [], [], []],
@@ -189,6 +192,14 @@ const nodes = {
   player1WinCount: mustGet("player1WinCount"),
   player2WinCount: mustGet("player2WinCount"),
   player3WinCount: mustGet("player3WinCount"),
+  scoreHistoryModal: mustGet("scoreHistoryModal"),
+  scoreHistoryBackdrop: mustGet("scoreHistoryBackdrop"),
+  scoreHistoryDialog: mustGet("scoreHistoryDialog"),
+  scoreHistoryTitle: mustGet("scoreHistoryTitle"),
+  scoreHistorySummary: mustGet("scoreHistorySummary"),
+  scoreHistoryList: mustGet("scoreHistoryList"),
+  scoreHistoryCloseButton: mustGet("scoreHistoryCloseButton"),
+  scoreHistoryTriggers: [...document.querySelectorAll(".score-history-trigger")],
   selfLackSuit: mustGet("selfLackSuit"),
   player1LackSuit: mustGet("player1LackSuit"),
   player2LackSuit: mustGet("player2LackSuit"),
@@ -243,6 +254,9 @@ const winPatternSounds = Object.freeze(Object.fromEntries(
 if (nodes.lackSuitButtons.length !== SUITED_SUITS.length) {
   throw new Error("Expected exactly three dingque buttons");
 }
+if (nodes.scoreHistoryTriggers.length !== PLAYER_NAMES.length) {
+  throw new Error("Expected exactly four score history triggers");
+}
 
 function mustGet(id) {
   const element = document.getElementById(id);
@@ -289,7 +303,8 @@ function assertRuleset(ruleset) {
     "refundGangOnDrawNotReady",
     "gangPaoTransferMode",
     "settleFlowerPigOnDraw",
-    "settleReadyHandsOnDraw"
+    "settleReadyHandsOnDraw",
+    "drawSettlementPlayerScope"
   ]) {
     if (!Object.prototype.hasOwnProperty.call(ruleset.gameplay, field)) {
       throw new Error(`ruleset ${ruleset.id} missing gameplay.${field}`);
@@ -298,11 +313,23 @@ function assertRuleset(ruleset) {
   if (!Array.isArray(ruleset.scoring.patterns)) {
     throw new Error(`ruleset ${ruleset.id} scoring.patterns must be an array`);
   }
+  if (!Number.isInteger(ruleset.scoring.basePoints) || ruleset.scoring.basePoints <= 0) {
+    throw new Error(`ruleset ${ruleset.id} scoring.basePoints must be a positive integer`);
+  }
   if (ruleset.scoring.aggregation !== "sum" && ruleset.scoring.aggregation !== "highest") {
     throw new Error(`ruleset ${ruleset.id} scoring.aggregation must be sum or highest`);
   }
   if (!["none", "refund"].includes(ruleset.gameplay.gangPaoTransferMode)) {
     throw new Error(`ruleset ${ruleset.id} gameplay.gangPaoTransferMode must be none or refund`);
+  }
+  if (!["none", "activePlayers", "nonWinners"].includes(ruleset.gameplay.drawSettlementPlayerScope)) {
+    throw new Error(`ruleset ${ruleset.id} gameplay.drawSettlementPlayerScope is invalid`);
+  }
+  const hasDrawSettlement = ruleset.gameplay.refundGangOnDrawNotReady
+    || ruleset.gameplay.settleFlowerPigOnDraw
+    || ruleset.gameplay.settleReadyHandsOnDraw;
+  if (hasDrawSettlement === (ruleset.gameplay.drawSettlementPlayerScope === "none")) {
+    throw new Error(`ruleset ${ruleset.id} draw settlement switches conflict with its player scope`);
   }
   if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
     throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);
@@ -915,6 +942,58 @@ function canPlayerWin(playerIndex) {
   return ruleset.gameplay.allowRepeatWins || !state.winners[playerIndex];
 }
 
+function drawSettlementPlayerIndices(activePlayers, winners, scope) {
+  if (!Array.isArray(activePlayers)) {
+    throw new Error("activePlayers must be an array");
+  }
+  if (!Array.isArray(winners) || winners.length !== PLAYER_NAMES.length) {
+    throw new Error(`winners must contain exactly ${PLAYER_NAMES.length} entries`);
+  }
+  if (winners.some((winner) => typeof winner !== "boolean")) {
+    throw new Error("winners entries must be booleans");
+  }
+  if (new Set(activePlayers).size !== activePlayers.length) {
+    throw new Error("activePlayers contains duplicate players");
+  }
+  for (const playerIndex of activePlayers) {
+    if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
+      throw new Error(`invalid active player index: ${playerIndex}`);
+    }
+  }
+  if (scope === "none") {
+    return [];
+  }
+  if (scope === "activePlayers") {
+    return [...activePlayers];
+  }
+  if (scope === "nonWinners") {
+    return activePlayers.filter((playerIndex) => !winners[playerIndex]);
+  }
+  throw new Error(`unknown draw settlement player scope: ${scope}`);
+}
+
+function applyScoreChange(playerIndex, amount, reason, transactionId) {
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
+    throw new Error(`Invalid score history player index: ${playerIndex}`);
+  }
+  if (!Number.isInteger(amount) || amount === 0) {
+    throw new Error(`Invalid score change amount: ${amount}`);
+  }
+  if (typeof reason !== "string" || reason.length === 0) {
+    throw new Error("Score change reason must be a non-empty string");
+  }
+  if (!Number.isInteger(transactionId) || transactionId < 1) {
+    throw new Error(`Invalid score transaction id: ${transactionId}`);
+  }
+  state.scores[playerIndex] += amount;
+  state.scoreHistory[playerIndex].unshift({
+    transactionId,
+    amount,
+    reason,
+    balance: state.scores[playerIndex]
+  });
+}
+
 function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new Error(`Invalid score transfer amount: ${amount}`);
@@ -925,11 +1004,73 @@ function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
   if (gangEventId !== null && (!Number.isInteger(gangEventId) || gangEventId < 1)) {
     throw new Error(`Invalid gang event id: ${gangEventId}`);
   }
-  state.scores[payerIndex] -= amount;
-  state.scores[payeeIndex] += amount;
+  const transactionId = state.nextScoreTransactionId;
+  state.nextScoreTransactionId += 1;
+  applyScoreChange(
+    payerIndex,
+    -amount,
+    `${reason}：支付给${PLAYER_NAMES[payeeIndex]}`,
+    transactionId
+  );
+  applyScoreChange(
+    payeeIndex,
+    amount,
+    `${reason}：收到${PLAYER_NAMES[payerIndex]}支付`,
+    transactionId
+  );
   if (gangEventId !== null) {
     state.gangLedger.push({ gangEventId, payerIndex, payeeIndex, amount, reason, refunded: false });
   }
+}
+
+function collectScores(payeeIndex, payerIndices, amountPerPayer, reason) {
+  if (!Array.isArray(payerIndices) || payerIndices.length === 0) {
+    throw new Error("Score collection requires at least one payer");
+  }
+  if (new Set(payerIndices).size !== payerIndices.length) {
+    throw new Error("Score collection contains duplicate payers");
+  }
+  if (payerIndices.includes(payeeIndex)) {
+    throw new Error("Score collection payee cannot also be a payer");
+  }
+  if (!Number.isInteger(amountPerPayer) || amountPerPayer <= 0) {
+    throw new Error(`Invalid score collection amount: ${amountPerPayer}`);
+  }
+  const transactionId = state.nextScoreTransactionId;
+  state.nextScoreTransactionId += 1;
+  for (const payerIndex of payerIndices) {
+    applyScoreChange(
+      payerIndex,
+      -amountPerPayer,
+      `${reason}：支付给${PLAYER_NAMES[payeeIndex]}`,
+      transactionId
+    );
+  }
+  const payerNames = payerIndices.map((payerIndex) => PLAYER_NAMES[payerIndex]).join("、");
+  applyScoreChange(
+    payeeIndex,
+    amountPerPayer * payerIndices.length,
+    `${reason}：收到${payerNames}支付（每家 ${amountPerPayer} 分）`,
+    transactionId
+  );
+}
+
+function refundScoreTransfer(entry, message) {
+  const transactionId = state.nextScoreTransactionId;
+  state.nextScoreTransactionId += 1;
+  applyScoreChange(
+    entry.payeeIndex,
+    -entry.amount,
+    `${message}：退还给${PLAYER_NAMES[entry.payerIndex]}`,
+    transactionId
+  );
+  applyScoreChange(
+    entry.payerIndex,
+    entry.amount,
+    `${message}：收回${PLAYER_NAMES[entry.payeeIndex]}退还的分数`,
+    transactionId
+  );
+  entry.refunded = true;
 }
 
 function refundGangEvents(gangEventIds, message) {
@@ -939,9 +1080,7 @@ function refundGangEvents(gangEventIds, message) {
   const eventIdSet = new Set(gangEventIds);
   const refundable = state.gangLedger.filter((entry) => eventIdSet.has(entry.gangEventId) && !entry.refunded);
   for (const entry of refundable) {
-    state.scores[entry.payeeIndex] -= entry.amount;
-    state.scores[entry.payerIndex] += entry.amount;
-    entry.refunded = true;
+    refundScoreTransfer(entry, message);
   }
   if (refundable.length > 0) {
     const amount = refundable.reduce((total, entry) => total + entry.amount, 0);
@@ -1238,6 +1377,88 @@ function logMessage(message) {
   state.messages.unshift(message);
   state.messages = state.messages.slice(0, 6);
   nodes.messageLog.innerHTML = state.messages.map((item) => `<div>${escapeHtml(item)}</div>`).join("");
+}
+
+function scoreHistoryTrigger(playerIndex) {
+  const trigger = nodes.scoreHistoryTriggers.find(
+    (candidate) => Number.parseInt(candidate.dataset.playerIndex, 10) === playerIndex
+  );
+  if (trigger === undefined) {
+    throw new Error(`Missing score history trigger for player ${playerIndex}`);
+  }
+  return trigger;
+}
+
+function positionScoreHistoryDialog(playerIndex) {
+  const tableRect = nodes.gameTable.getBoundingClientRect();
+  const triggerRect = scoreHistoryTrigger(playerIndex).getBoundingClientRect();
+  const dialogRect = nodes.scoreHistoryDialog.getBoundingClientRect();
+  const gap = 16;
+  let left;
+  let top;
+  if (playerIndex === 0) {
+    left = triggerRect.right - tableRect.left + gap;
+    top = triggerRect.bottom - tableRect.top - dialogRect.height;
+  } else if (playerIndex === 1) {
+    left = triggerRect.right - tableRect.left + gap;
+    top = triggerRect.top - tableRect.top;
+  } else if (playerIndex === 2) {
+    left = triggerRect.left - tableRect.left - dialogRect.width - gap;
+    top = triggerRect.bottom - tableRect.top + gap;
+  } else if (playerIndex === 3) {
+    left = triggerRect.left - tableRect.left - dialogRect.width - gap;
+    top = triggerRect.top - tableRect.top;
+  } else {
+    throw new Error(`Invalid score history player index: ${playerIndex}`);
+  }
+  nodes.scoreHistoryDialog.style.left = `${Math.min(Math.max(left, gap), tableRect.width - dialogRect.width - gap)}px`;
+  nodes.scoreHistoryDialog.style.top = `${Math.min(Math.max(top, gap), tableRect.height - dialogRect.height - gap)}px`;
+}
+
+function renderScoreHistory() {
+  const playerIndex = state.openScoreHistoryPlayerIndex;
+  nodes.scoreHistoryModal.hidden = playerIndex === null;
+  if (playerIndex === null) {
+    return;
+  }
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
+    throw new Error(`Invalid open score history player index: ${playerIndex}`);
+  }
+  nodes.scoreHistoryTitle.textContent = `${PLAYER_NAMES[playerIndex]}：${state.scores[playerIndex]} 分`;
+  nodes.scoreHistorySummary.textContent = `胡牌 ${state.winCounts[playerIndex]} 次 · 底分 ${currentRuleset().scoring.basePoints} 分`;
+  const history = state.scoreHistory[playerIndex];
+  nodes.scoreHistoryList.innerHTML = history.length === 0
+    ? '<p class="score-history-empty">暂无分数变动</p>'
+    : history.map((entry) => {
+      const isGain = entry.amount > 0;
+      const amountText = `${isGain ? "+" : ""}${entry.amount}分`;
+      return `
+        <article class="score-history-entry ${isGain ? "score-history-gain" : "score-history-loss"}">
+          <div><span>${escapeHtml(entry.reason)}</span><strong>${amountText}</strong></div>
+          <small>第 ${entry.transactionId} 笔 · 结余 ${entry.balance} 分</small>
+        </article>
+      `;
+    }).join("");
+  positionScoreHistoryDialog(playerIndex);
+}
+
+function openScoreHistory(playerIndex) {
+  state.openScoreHistoryPlayerIndex = playerIndex;
+  renderScoreHistory();
+  nodes.scoreHistoryCloseButton.focus();
+}
+
+function closeScoreHistory() {
+  state.openScoreHistoryPlayerIndex = null;
+  nodes.scoreHistoryModal.hidden = true;
+}
+
+function closeScoreHistoryAndRestoreFocus() {
+  const playerIndex = state.openScoreHistoryPlayerIndex;
+  closeScoreHistory();
+  if (playerIndex !== null) {
+    scoreHistoryTrigger(playerIndex).focus();
+  }
 }
 
 function playActionSound(action) {
@@ -1912,6 +2133,7 @@ function render() {
   nodes.player1WinCount.textContent = state.winCounts[1] === 0 ? "" : `· 胡×${state.winCounts[1]}`;
   nodes.player2WinCount.textContent = state.winCounts[2] === 0 ? "" : `· 胡×${state.winCounts[2]}`;
   nodes.player3WinCount.textContent = state.winCounts[3] === 0 ? "" : `· 胡×${state.winCounts[3]}`;
+  renderScoreHistory();
   nodes.exchangePanel.hidden = !state.awaitingExchange;
   nodes.exchangeSelectionStatus.textContent = ruleset === null
     ? "已选 0 / 0"
@@ -2128,6 +2350,9 @@ async function startRound() {
   state.discards = [[], [], [], []];
   state.melds = [[], [], [], []];
   state.scores = [0, 0, 0, 0];
+  state.scoreHistory = [[], [], [], []];
+  state.nextScoreTransactionId = 1;
+  closeScoreHistory();
   state.gangLedger = [];
   state.nextGangEventId = 1;
   state.pendingGangEventIds = [[], [], [], []];
@@ -2695,14 +2920,15 @@ function settleGang(playerIndex, gangType, discarderIndex, tile) {
     if (!Number.isInteger(discarderIndex)) {
       throw new Error("直杠必须提供点杠者");
     }
-    transferScore(discarderIndex, playerIndex, 2, `点杠${tileLabel(tile)}`, gangEventId);
-    logMessage(`刮风：${PLAYER_NAMES[discarderIndex]}向${PLAYER_NAMES[playerIndex]}支付 2 分。`);
+    const amount = ruleset.scoring.basePoints * 2;
+    transferScore(discarderIndex, playerIndex, amount, `点杠${tileLabel(tile)}`, gangEventId);
+    logMessage(`刮风：${PLAYER_NAMES[discarderIndex]}向${PLAYER_NAMES[playerIndex]}支付 ${amount} 分。`);
     return;
   }
   if (gangType !== "concealed" && gangType !== "added") {
     throw new Error(`Unknown gang settlement type: ${gangType}`);
   }
-  const amount = gangType === "concealed" ? 2 : 1;
+  const amount = ruleset.scoring.basePoints * (gangType === "concealed" ? 2 : 1);
   const payers = activePlayerIndices().filter((candidate) => candidate !== playerIndex);
   for (const payerIndex of payers) {
     transferScore(
@@ -3324,13 +3550,11 @@ async function registerWins(entries, settlement) {
     : settlement.winningTile;
   state.visibleWonTiles.push(visibleWinningTile);
   for (const entry of scoredEntries) {
-    const baseAmount = 2 ** entry.score.cappedFan;
+    const baseAmount = ruleset.scoring.basePoints * (2 ** entry.score.cappedFan);
     if (settlement.type === "selfDraw") {
-      const amount = baseAmount + (ruleset.scoring.selfDrawAddsBase ? 1 : 0);
+      const amount = baseAmount + (ruleset.scoring.selfDrawAddsBase ? ruleset.scoring.basePoints : 0);
       const payers = activePlayerIndices().filter((playerIndex) => playerIndex !== entry.playerIndex);
-      for (const payerIndex of payers) {
-        transferScore(payerIndex, entry.playerIndex, amount, "自摸", null);
-      }
+      collectScores(entry.playerIndex, payers, amount, "自摸");
     } else {
       transferScore(settlement.payerIndex, entry.playerIndex, baseAmount, "点炮", null);
     }
@@ -3369,14 +3593,19 @@ async function finishDrawRound() {
   state.turnPlayerIndex = null;
   renderTurnIndicator();
   const activePlayers = activePlayerIndices();
+  const settlementPlayers = drawSettlementPlayerIndices(
+    activePlayers,
+    state.winners,
+    ruleset.gameplay.drawSettlementPlayerScope
+  );
   const flowerPigs = ruleset.gameplay.settleFlowerPigOnDraw
-    ? activePlayers.filter((playerIndex) => hasDingqueTilesLocal(
+    ? settlementPlayers.filter((playerIndex) => hasDingqueTilesLocal(
       state.hands[playerIndex],
       ruleset,
       state.lackSuits[playerIndex]
     ))
     : [];
-  const eligiblePlayers = activePlayers.filter((playerIndex) => !flowerPigs.includes(playerIndex));
+  const eligiblePlayers = settlementPlayers.filter((playerIndex) => !flowerPigs.includes(playerIndex));
   const readyInfo = new Map(eligiblePlayers.map((playerIndex) => [
     playerIndex,
     readySettlementInfo(playerIndex, ruleset)
@@ -3389,9 +3618,7 @@ async function finishDrawRound() {
     for (const playerIndex of refundPlayers) {
       const refundable = state.gangLedger.filter((entry) => entry.payeeIndex === playerIndex && !entry.refunded);
       for (const entry of refundable) {
-        state.scores[entry.payeeIndex] -= entry.amount;
-        state.scores[entry.payerIndex] += entry.amount;
-        entry.refunded = true;
+        refundScoreTransfer(entry, `退税：${PLAYER_NAMES[playerIndex]}未听牌`);
       }
       if (refundable.length > 0) {
         const refundedAmount = refundable.reduce((total, entry) => total + entry.amount, 0);
@@ -3401,7 +3628,7 @@ async function finishDrawRound() {
   }
 
   if (ruleset.gameplay.settleFlowerPigOnDraw) {
-    const flowerPigAmount = 2 ** ruleset.scoring.maxFan;
+    const flowerPigAmount = ruleset.scoring.basePoints * (2 ** ruleset.scoring.maxFan);
     for (const flowerPigIndex of flowerPigs) {
       for (const payeeIndex of eligiblePlayers) {
         transferScore(flowerPigIndex, payeeIndex, flowerPigAmount, "查花猪", null);
@@ -3448,7 +3675,7 @@ function readySettlementInfo(playerIndex, ruleset) {
     if (!score.isWinning) {
       throw new Error(`${PLAYER_NAMES[playerIndex]}的听牌${tileLabel(wait.tile)}无法计分`);
     }
-    maxAmount = Math.max(maxAmount, 2 ** score.cappedFan);
+    maxAmount = Math.max(maxAmount, ruleset.scoring.basePoints * (2 ** score.cappedFan));
   }
   return { waits, maxAmount };
 }
@@ -3620,9 +3847,24 @@ nodes.updateRulesButton.addEventListener("click", () => {
 nodes.rulesetSelect.addEventListener("change", () => {
   runAsync(() => changeRuleset(nodes.rulesetSelect.value));
 });
+for (const trigger of nodes.scoreHistoryTriggers) {
+  trigger.addEventListener("click", () => {
+    openScoreHistory(Number.parseInt(trigger.dataset.playerIndex, 10));
+  });
+}
+nodes.scoreHistoryBackdrop.addEventListener("click", closeScoreHistoryAndRestoreFocus);
+nodes.scoreHistoryCloseButton.addEventListener("click", closeScoreHistoryAndRestoreFocus);
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.openScoreHistoryPlayerIndex !== null) {
+    closeScoreHistoryAndRestoreFocus();
+  }
+});
 window.addEventListener("resize", () => {
   for (let playerIndex = 0; playerIndex < PLAYER_NAMES.length; playerIndex += 1) {
     layoutWonTileTray(playerIndex);
+  }
+  if (state.openScoreHistoryPlayerIndex !== null) {
+    positionScoreHistoryDialog(state.openScoreHistoryPlayerIndex);
   }
 });
 
