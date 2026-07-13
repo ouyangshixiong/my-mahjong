@@ -151,6 +151,7 @@ async function main() {
       "client/hand-layout.js",
       "client/post-win-turn.js",
       "client/turn-order.js",
+      "client/win-scoring.js",
       "client/index.html",
       "client/renderer.js",
       "client/styles.css",

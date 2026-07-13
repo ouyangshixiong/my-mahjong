@@ -1117,28 +1117,21 @@ button.self-player-card {
 }
 
 .score-history-entry div {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  overflow: hidden;
 }
 
 .score-history-entry span {
+  display: block;
+  overflow: hidden;
   color: #d9eeeb;
   font-size: 12px;
   line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .score-history-entry strong {
-  flex: 0 0 auto;
-  font-size: 15px;
-}
-
-.score-history-entry small {
-  display: block;
-  margin-top: 4px;
-  color: #719e9e;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .score-history-gain strong {

@@ -22,7 +22,7 @@ const DEFAULT_RULESET_ID = "sichuan-xueliu";
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xueliu",
-    version: 4,
+    version: 5,
     updatedAt: "2026-07-13T00:00:00+08:00",
     name: "四川麻将血流成河",
     description: "三门 108 张，先定缺再换三张；胡牌后不退出，可重复胡牌并即时结算，直到牌墙摸完。",
@@ -65,14 +65,15 @@ const RULESETS = Object.freeze([
       aggregation: "sum",
       basePoints: 100,
       baseFan: 0,
-      maxFan: 3,
-      selfDrawAddsBase: true,
+      maxFan: 5,
+      selfDrawFan: 1,
+      specialSelfDrawMode: "replace",
       patterns: SICHUAN_SCORING_PATTERNS
     })
   }),
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 9,
+    version: 10,
     updatedAt: "2026-07-13T00:00:00+08:00",
     name: "四川麻将血战",
     description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
@@ -115,8 +116,9 @@ const RULESETS = Object.freeze([
       aggregation: "sum",
       basePoints: 100,
       baseFan: 0,
-      maxFan: 3,
-      selfDrawAddsBase: true,
+      maxFan: 5,
+      selfDrawFan: 1,
+      specialSelfDrawMode: "replace",
       patterns: SICHUAN_SCORING_PATTERNS
     })
   }),
@@ -169,7 +171,8 @@ const RULESETS = Object.freeze([
       basePoints: 100,
       baseFan: 1,
       maxFan: 24,
-      selfDrawAddsBase: false,
+      selfDrawFan: 0,
+      specialSelfDrawMode: "replace",
       patterns: Object.freeze([
         Object.freeze({ id: "baseHu", name: "基础胡", fan: 1, type: "base" }),
         Object.freeze({ id: "duiDuiHu", name: "碰碰胡", fan: 2, type: "allTriplets" }),
@@ -340,8 +343,11 @@ function assertRulesetShape(ruleset) {
   if (!Number.isInteger(ruleset.scoring.basePoints) || ruleset.scoring.basePoints <= 0) {
     throw new Error(`ruleset ${ruleset.id} scoring.basePoints must be a positive integer`);
   }
-  if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
-    throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);
+  if (!Number.isInteger(ruleset.scoring.selfDrawFan) || ruleset.scoring.selfDrawFan < 0) {
+    throw new Error(`ruleset ${ruleset.id} scoring.selfDrawFan must be a non-negative integer`);
+  }
+  if (!["replace", "stack"].includes(ruleset.scoring.specialSelfDrawMode)) {
+    throw new Error(`ruleset ${ruleset.id} scoring.specialSelfDrawMode must be replace or stack`);
   }
   if (ruleset.scoring.aggregation !== "sum" && ruleset.scoring.aggregation !== "highest") {
     throw new Error(`ruleset ${ruleset.id} scoring.aggregation must be sum or highest`);

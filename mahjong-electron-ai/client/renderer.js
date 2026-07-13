@@ -331,8 +331,11 @@ function assertRuleset(ruleset) {
   if (hasDrawSettlement === (ruleset.gameplay.drawSettlementPlayerScope === "none")) {
     throw new Error(`ruleset ${ruleset.id} draw settlement switches conflict with its player scope`);
   }
-  if (typeof ruleset.scoring.selfDrawAddsBase !== "boolean") {
-    throw new Error(`ruleset ${ruleset.id} scoring.selfDrawAddsBase must be boolean`);
+  if (!Number.isInteger(ruleset.scoring.selfDrawFan) || ruleset.scoring.selfDrawFan < 0) {
+    throw new Error(`ruleset ${ruleset.id} scoring.selfDrawFan must be a non-negative integer`);
+  }
+  if (!["replace", "stack"].includes(ruleset.scoring.specialSelfDrawMode)) {
+    throw new Error(`ruleset ${ruleset.id} scoring.specialSelfDrawMode must be replace or stack`);
   }
   if (typeof ruleset.gameplay.continueAfterWin !== "boolean") {
     throw new Error(`ruleset ${ruleset.id} gameplay.continueAfterWin must be boolean`);
@@ -1036,16 +1039,22 @@ function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
   }
   const transactionId = state.nextScoreTransactionId;
   state.nextScoreTransactionId += 1;
+  const payerReason = reason === "点炮"
+    ? `向${PLAYER_NAMES[payeeIndex]}点炮`
+    : `${reason}：支付给${PLAYER_NAMES[payeeIndex]}`;
+  const payeeReason = reason === "点炮"
+    ? `${PLAYER_NAMES[payerIndex]}点炮`
+    : `${reason}：收到${PLAYER_NAMES[payerIndex]}支付`;
   applyScoreChange(
     payerIndex,
     -amount,
-    `${reason}：支付给${PLAYER_NAMES[payeeIndex]}`,
+    payerReason,
     transactionId
   );
   applyScoreChange(
     payeeIndex,
     amount,
-    `${reason}：收到${PLAYER_NAMES[payerIndex]}支付`,
+    payeeReason,
     transactionId
   );
   if (gangEventId !== null) {
@@ -1313,12 +1322,15 @@ function winningTilesLocal(hand, visible, ruleset, lackSuit) {
   return wins;
 }
 
-function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext) {
+function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext, settlementType) {
   if (!Array.isArray(melds)) {
     throw new Error("melds must be an array");
   }
   if (![null, "gangShangHua", "gangShangPao", "qiangGang", "haiDi"].includes(winContext)) {
     throw new Error(`Unknown win context: ${winContext}`);
+  }
+  if (settlementType !== "selfDraw" && settlementType !== "discard") {
+    throw new Error(`Unknown settlement type: ${settlementType}`);
   }
   if (!isWinningHandLocal(hand, ruleset, lackSuit)) {
     return { isWinning: false, totalFan: 0, cappedFan: 0, patterns: [] };
@@ -1336,15 +1348,9 @@ function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext) {
     }
   }
   if (ruleset.gameplay.requiresDingque) {
-    const fullTiles = [...hand, ...melds.flatMap((meld) => meld.tiles)];
-    const fullCounts = countTilesLocal(fullTiles, ruleset);
-    const rootCount = Object.values(fullCounts).filter((count) => count === 4).length;
+    const rootCount = window.mahjongAI.rootCountForWin(hand, melds);
     if (rootCount > 0) {
       patterns.push({ id: "gen", name: `根x${rootCount}`, fan: rootCount, type: "rootEach" });
-    }
-    const gangCount = melds.filter((meld) => meld.type === "gang").length;
-    if (gangCount > 0) {
-      patterns.push({ id: "gang", name: `杠x${gangCount}`, fan: gangCount, type: "gangEach" });
     }
     if (melds.length === 4 && hand.length === 2) {
       patterns.push({ id: "jinGouDiao", name: "金钩钓", fan: 1, type: "goldHook" });
@@ -1359,6 +1365,14 @@ function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext) {
       const contextPattern = contextPatterns[winContext];
       patterns.push({ ...contextPattern, fan: 1, type: "winContext" });
     }
+  }
+  const operationPattern = window.mahjongAI.operationPatternForWin(
+    settlementType,
+    winContext,
+    ruleset.scoring
+  );
+  if (operationPattern !== null) {
+    patterns.push(operationPattern);
   }
   const appliedPatterns = ruleset.scoring.aggregation === "highest"
     ? patterns.filter((pattern) => pattern.fan === Math.max(...patterns.map((item) => item.fan))).slice(0, 1)
@@ -1464,8 +1478,7 @@ function renderScoreHistory() {
       const amountText = `${isGain ? "+" : ""}${entry.amount}分`;
       return `
         <article class="score-history-entry ${isGain ? "score-history-gain" : "score-history-loss"}">
-          <div><span>${escapeHtml(entry.reason)}</span><strong>${amountText}</strong></div>
-          <small>第 ${entry.transactionId} 笔 · 结余 ${entry.balance} 分</small>
+          <div><span>${entry.transactionId}. ${escapeHtml(entry.reason)} <strong>${amountText}</strong>，总分 ${entry.balance}分</span></div>
         </article>
       `;
     }).join("");
@@ -1541,8 +1554,12 @@ async function playWinAnnouncement(playerIndex, patterns) {
   }
   await playAnnouncementAudio(playerIndex, actionSounds.hu, ACTION_SOUND_LABELS.hu);
   await sleep(HU_TO_PATTERN_PAUSE_MS);
-  const specialPatterns = patterns.filter((pattern) => pattern.id !== "baseHu");
-  const announcedPatterns = specialPatterns.length > 0 ? specialPatterns : patterns;
+  const specialPatterns = patterns.filter(
+    (pattern) => pattern.id !== "baseHu" && pattern.id !== "selfDraw"
+  );
+  const announcedPatterns = specialPatterns.length > 0
+    ? specialPatterns
+    : patterns.filter((pattern) => pattern.id === "baseHu");
   for (let index = 0; index < announcedPatterns.length; index += 1) {
     const pattern = announcedPatterns[index];
     const announcementName = pattern.name.replace(/x\d+$/u, "");
@@ -3322,7 +3339,8 @@ async function askAi() {
     ruleset,
     state.lackSuits[0],
     state.melds[0],
-    state.turnWinContexts[0]
+    state.turnWinContexts[0],
+    "selfDraw"
   ));
   render();
 }
@@ -3340,7 +3358,8 @@ async function refreshAnalysis() {
     ruleset,
     state.lackSuits[0],
     state.melds[0],
-    state.turnWinContexts[0]
+    state.turnWinContexts[0],
+    "selfDraw"
   ));
 }
 
@@ -3405,7 +3424,8 @@ async function claimHu() {
       ruleset,
       state.lackSuits[0],
       state.melds[0],
-      state.turnWinContexts[0]
+      state.turnWinContexts[0],
+      "selfDraw"
     );
     await registerWins([{
       playerIndex: 0,
@@ -3442,7 +3462,8 @@ async function claimHu() {
     ruleset,
     state.lackSuits[0],
     state.melds[0],
-    state.turnWinContexts[0]
+    state.turnWinContexts[0],
+    "selfDraw"
   ));
 }
 
@@ -3616,7 +3637,8 @@ async function registerWins(entries, settlement) {
       ruleset,
       state.lackSuits[entry.playerIndex],
       state.melds[entry.playerIndex],
-      entry.winContext
+      entry.winContext,
+      settlement.type
     );
     if (!score.isWinning) {
       throw new Error(`${PLAYER_NAMES[entry.playerIndex]}的胡牌不符合当前规则`);
@@ -3636,13 +3658,12 @@ async function registerWins(entries, settlement) {
     : settlement.winningTile;
   state.visibleWonTiles.push(visibleWinningTile);
   for (const entry of scoredEntries) {
-    const baseAmount = ruleset.scoring.basePoints * (2 ** entry.score.cappedFan);
+    const amount = window.mahjongAI.scoreAmount(ruleset.scoring, entry.score.cappedFan);
     if (settlement.type === "selfDraw") {
-      const amount = baseAmount + (ruleset.scoring.selfDrawAddsBase ? ruleset.scoring.basePoints : 0);
       const payers = activePlayerIndices().filter((playerIndex) => playerIndex !== entry.playerIndex);
       collectScores(entry.playerIndex, payers, amount, "自摸");
     } else {
-      transferScore(settlement.payerIndex, entry.playerIndex, baseAmount, "点炮", null);
+      transferScore(settlement.payerIndex, entry.playerIndex, amount, "点炮", null);
     }
   }
 
@@ -3756,12 +3777,13 @@ function readySettlementInfo(playerIndex, ruleset) {
       ruleset,
       state.lackSuits[playerIndex],
       state.melds[playerIndex],
-      null
+      null,
+      "discard"
     );
     if (!score.isWinning) {
       throw new Error(`${PLAYER_NAMES[playerIndex]}的听牌${tileLabel(wait.tile)}无法计分`);
     }
-    maxAmount = Math.max(maxAmount, ruleset.scoring.basePoints * (2 ** score.cappedFan));
+    maxAmount = Math.max(maxAmount, window.mahjongAI.scoreAmount(ruleset.scoring, score.cappedFan));
   }
   return { waits, maxAmount };
 }

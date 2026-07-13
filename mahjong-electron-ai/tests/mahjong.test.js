@@ -344,7 +344,7 @@ test("scores pure seven pairs for xuezhan", () => {
   assert.equal(score.isWinning, true);
   assert.ok(score.patterns.some((pattern) => pattern.id === "qingYiSe"));
   assert.ok(score.patterns.some((pattern) => pattern.id === "qiDui"));
-  assert.equal(score.cappedFan, 3);
+  assert.equal(score.cappedFan, 4);
 });
 
 test("sichuan analysis rejects a missing dingque declaration", () => {

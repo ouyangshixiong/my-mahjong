@@ -6,6 +6,7 @@ const {
 } = require("./turn-order");
 const { arrangeHandForDrawPreview } = require("./hand-layout");
 const { decidePostWinDraw } = require("./post-win-turn");
+const { operationPatternForWin, rootCountForWin, scoreAmount } = require("./win-scoring");
 const {
   discardGangPreservesWaits,
   waitPreservingSelfGangOptions
@@ -88,6 +89,15 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   decidePostWinDraw(hand, drawnTile, isWinning) {
     return decidePostWinDraw(hand, drawnTile, isWinning);
+  },
+  operationPatternForWin(settlementType, winContext, scoring) {
+    return operationPatternForWin(settlementType, winContext, scoring);
+  },
+  rootCountForWin(hand, melds) {
+    return rootCountForWin(hand, melds);
+  },
+  scoreAmount(scoring, cappedFan) {
+    return scoreAmount(scoring, cappedFan);
   },
   waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit) {
     return waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit);
