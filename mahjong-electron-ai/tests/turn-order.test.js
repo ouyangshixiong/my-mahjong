@@ -23,10 +23,19 @@ test("seat winds match the dealer and relative player positions", () => {
   assert.match(html, /seat-avatar avatar-right">南</);
   assert.match(html, /seat-avatar avatar-top">西</);
   assert.match(html, /seat-avatar avatar-left">北</);
-  assert.match(html, /wind wind-bottom">东</);
-  assert.match(html, /wind wind-right">南</);
-  assert.match(html, /wind wind-top">西</);
-  assert.match(html, /wind wind-left">北</);
+});
+
+test("center compass follows north-up mahjong directions", () => {
+  const html = fs.readFileSync(path.join(__dirname, "../client/index.html"), "utf8");
+  assert.match(html, /wind wind-top">北</);
+  assert.match(html, /wind wind-right">东</);
+  assert.match(html, /wind wind-bottom">南</);
+  assert.match(html, /wind wind-left">西</);
+});
+
+test("remaining wall tile count is centered in its circle", () => {
+  const css = fs.readFileSync(path.join(__dirname, "../client/styles.css"), "utf8");
+  assert.match(css, /\.wall-card\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*text-align:\s*center;/s);
 });
 
 test("turn indicator maps every seat to its visible table direction", () => {
