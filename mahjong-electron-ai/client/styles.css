@@ -1261,6 +1261,26 @@ button.self-player-card {
   transform: perspective(500px) rotateZ(-6deg) rotateY(-9deg);
 }
 
+.closed-hand.revealed-hand {
+  filter: drop-shadow(0 9px 8px rgba(0, 0, 0, 0.52));
+}
+
+.closed-hand.vertical.revealed-hand {
+  gap: 0;
+}
+
+.closed-hand.vertical.revealed-hand .revealed-hand-tile {
+  margin-block: -4.5px;
+}
+
+.opponent-left .revealed-hand-tile {
+  transform: rotate(90deg);
+}
+
+.opponent-right .revealed-hand-tile {
+  transform: rotate(-90deg);
+}
+
 .tile-back,
 .wall-tile {
   position: relative;

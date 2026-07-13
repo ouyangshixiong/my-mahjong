@@ -1748,6 +1748,21 @@ function createTileBack() {
   return element;
 }
 
+function createRevealedHandTile(tile, playerIndex) {
+  if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
+    throw new Error(`明牌玩家索引非法：${playerIndex}`);
+  }
+  const element = createTile(tile, "small", null);
+  const lackSuit = state.lackSuits[playerIndex];
+  element.classList.add("revealed-hand-tile");
+  element.classList.toggle(
+    "dingque-tile",
+    lackSuit !== null && TILE_BY_ID[tile].suitKey === lackSuit
+  );
+  element.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}结束手牌：${tileLabel(tile)}`);
+  return element;
+}
+
 function createWallTile() {
   const element = document.createElement("div");
   element.className = "wall-tile";
@@ -2111,7 +2126,18 @@ function render() {
     const handNode = nodes[`player${playerIndex}Hand`];
     const riverNode = nodes[`player${playerIndex}River`];
     const meldNode = nodes[`player${playerIndex}Melds`];
-    replaceChildren(handNode, state.hands[playerIndex].map(createTileBack));
+    const revealHand = state.roundOver;
+    const handTiles = revealHand
+      ? state.hands[playerIndex].map((tile) => createRevealedHandTile(tile, playerIndex))
+      : state.hands[playerIndex].map(createTileBack);
+    handNode.classList.toggle("revealed-hand", revealHand);
+    handNode.setAttribute(
+      "aria-label",
+      revealHand
+        ? `${PLAYER_NAMES[playerIndex]}牌局结束手牌，共 ${state.hands[playerIndex].length} 张`
+        : `${PLAYER_NAMES[playerIndex]}暗牌，共 ${state.hands[playerIndex].length} 张`
+    );
+    replaceChildren(handNode, handTiles);
     renderWonTiles(playerIndex);
     replaceChildren(riverNode, state.discards[playerIndex].map((tile, index, discards) => createRiverTile(tile, index, discards.length)));
     replaceChildren(meldNode, state.melds[playerIndex].map((meld, meldIndex) => createMeld(meld, playerIndex, meldIndex)));
