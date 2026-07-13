@@ -4,6 +4,7 @@ const http = require("node:http");
 const https = require("node:https");
 const { URL } = require("node:url");
 const fs = require("node:fs");
+const { synchronizeRulesetMenuSelection } = require("./menu-state");
 
 function getServiceUrl() {
   const value = process.env.MAHJONG_SERVICE_URL;
@@ -131,9 +132,7 @@ function synchronizeApplicationMenu() {
   menu.getMenuItemById("ai-suggestion").enabled = menuState.canAskAi;
   menu.getMenuItemById("update-rules").enabled = menuState.canUpdateRules;
   menu.getMenuItemById("toggle-advisor").checked = menuState.advisorVisible;
-  for (let index = 0; index < menuState.rulesets.length; index += 1) {
-    menu.getMenuItemById(`ruleset-${index}`).checked = menuState.rulesets[index].id === menuState.currentRulesetId;
-  }
+  synchronizeRulesetMenuSelection(menu, menuState.rulesets, menuState.currentRulesetId);
 }
 
 function assertMenuState(payload) {
