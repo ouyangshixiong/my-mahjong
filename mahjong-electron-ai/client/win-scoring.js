@@ -63,6 +63,62 @@ function operationPatternForWin(settlementType, winContext, scoring) {
   });
 }
 
+function validateWinPatterns(patterns) {
+  if (!Array.isArray(patterns) || patterns.length === 0) {
+    throw new Error("win patterns must be a non-empty array");
+  }
+  for (const pattern of patterns) {
+    if (
+      pattern === null
+      || typeof pattern !== "object"
+      || typeof pattern.id !== "string"
+      || pattern.id.length === 0
+      || typeof pattern.name !== "string"
+      || pattern.name.length === 0
+      || !Number.isInteger(pattern.fan)
+      || pattern.fan < 0
+    ) {
+      throw new Error("win pattern must contain a valid id, name, and fan");
+    }
+  }
+}
+
+function announcementPatternsForWin(patterns) {
+  validateWinPatterns(patterns);
+  const specialPatterns = patterns.filter(
+    (pattern) => pattern.id !== "baseHu" && pattern.id !== "selfDraw"
+  );
+  if (specialPatterns.length > 0) {
+    return specialPatterns;
+  }
+  const selfDrawPatterns = patterns.filter((pattern) => pattern.id === "selfDraw");
+  if (selfDrawPatterns.length > 0) {
+    return selfDrawPatterns;
+  }
+  const basePatterns = patterns.filter((pattern) => pattern.id === "baseHu");
+  if (basePatterns.length === 0) {
+    throw new Error("win patterns do not contain an announceable pattern");
+  }
+  return basePatterns;
+}
+
+function displayPatternNamesForWin(patterns) {
+  validateWinPatterns(patterns);
+  const specialPatterns = patterns.filter(
+    (pattern) => pattern.id !== "baseHu" && pattern.id !== "selfDraw"
+  );
+  const displayPatterns = specialPatterns.length > 0
+    ? specialPatterns
+    : patterns.filter((pattern) => pattern.id === "baseHu");
+  if (displayPatterns.length === 0) {
+    throw new Error("win patterns do not contain a displayable pattern");
+  }
+  return displayPatterns
+    .map((pattern, index) => ({ pattern, index }))
+    .sort((left, right) => right.pattern.fan - left.pattern.fan || left.index - right.index)
+    .map(({ pattern }) => pattern.name);
+}
+
 function scoreAmount(scoring, cappedFan) {
   if (!Number.isInteger(scoring.basePoints) || scoring.basePoints <= 0) {
     throw new Error("scoring.basePoints must be a positive integer");
@@ -74,7 +130,9 @@ function scoreAmount(scoring, cappedFan) {
 }
 
 module.exports = {
+  announcementPatternsForWin,
   declaredGangPatternForWin,
+  displayPatternNamesForWin,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount

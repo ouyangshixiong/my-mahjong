@@ -7,7 +7,9 @@ const {
 const { arrangeHandForDrawPreview } = require("./hand-layout");
 const { decidePostWinDraw } = require("./post-win-turn");
 const {
+  announcementPatternsForWin,
   declaredGangPatternForWin,
+  displayPatternNamesForWin,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount
@@ -95,8 +97,14 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   decidePostWinDraw(hand, drawnTile, isWinning) {
     return decidePostWinDraw(hand, drawnTile, isWinning);
   },
+  announcementPatternsForWin(patterns) {
+    return announcementPatternsForWin(patterns);
+  },
   declaredGangPatternForWin(melds) {
     return declaredGangPatternForWin(melds);
+  },
+  displayPatternNamesForWin(patterns) {
+    return displayPatternNamesForWin(patterns);
   },
   operationPatternForWin(settlementType, winContext, scoring) {
     return operationPatternForWin(settlementType, winContext, scoring);

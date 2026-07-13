@@ -1116,17 +1116,33 @@ button.self-player-card {
   margin-top: 7px;
 }
 
-.score-history-entry div {
-  overflow: hidden;
-}
-
-.score-history-entry span {
-  display: block;
-  overflow: hidden;
+.score-history-main {
   color: #d9eeeb;
   font-size: 12px;
   line-height: 1.45;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.score-history-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  color: #aac8c5;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.score-history-patterns {
+  min-width: 0;
+  color: #ffe09a;
+  overflow-wrap: anywhere;
+}
+
+.score-history-total {
+  flex: 0 0 auto;
+  margin-left: auto;
   white-space: nowrap;
 }
 

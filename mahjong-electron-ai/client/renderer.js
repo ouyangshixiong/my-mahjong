@@ -76,6 +76,7 @@ const ACTION_SOUND_LABELS = Object.freeze({
 });
 const WIN_PATTERN_SOUND_PATHS = Object.freeze({
   "平胡": "../assets/sounds/nv/patterns/ping-hu.wav",
+  "自摸": "../assets/sounds/nv/patterns/zi-mo.wav",
   "基础胡": "../assets/sounds/nv/patterns/ji-chu-hu.wav",
   "对对胡": "../assets/sounds/nv/patterns/dui-dui-hu.wav",
   "碰碰胡": "../assets/sounds/nv/patterns/peng-peng-hu.wav",
@@ -1008,7 +1009,7 @@ function drawSettlementPlayerIndices(activePlayers, winners, scope) {
   throw new Error(`unknown draw settlement player scope: ${scope}`);
 }
 
-function applyScoreChange(playerIndex, amount, reason, transactionId) {
+function applyScoreChange(playerIndex, amount, reason, transactionId, winPatternNames) {
   if (!Number.isInteger(playerIndex) || playerIndex < 0 || playerIndex >= PLAYER_NAMES.length) {
     throw new Error(`Invalid score history player index: ${playerIndex}`);
   }
@@ -1021,16 +1022,27 @@ function applyScoreChange(playerIndex, amount, reason, transactionId) {
   if (!Number.isInteger(transactionId) || transactionId < 1) {
     throw new Error(`Invalid score transaction id: ${transactionId}`);
   }
+  if (
+    winPatternNames !== null
+    && (
+      !Array.isArray(winPatternNames)
+      || winPatternNames.length === 0
+      || winPatternNames.some((patternName) => typeof patternName !== "string" || patternName.length === 0)
+    )
+  ) {
+    throw new Error("Win pattern names must be null or a non-empty string array");
+  }
   state.scores[playerIndex] += amount;
   state.scoreHistory[playerIndex].unshift({
     transactionId,
     amount,
     reason,
-    balance: state.scores[playerIndex]
+    balance: state.scores[playerIndex],
+    winPatternNames: winPatternNames === null ? null : [...winPatternNames]
   });
 }
 
-function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
+function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId, winPatternNames) {
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new Error(`Invalid score transfer amount: ${amount}`);
   }
@@ -1052,20 +1064,22 @@ function transferScore(payerIndex, payeeIndex, amount, reason, gangEventId) {
     payerIndex,
     -amount,
     payerReason,
-    transactionId
+    transactionId,
+    winPatternNames
   );
   applyScoreChange(
     payeeIndex,
     amount,
     payeeReason,
-    transactionId
+    transactionId,
+    winPatternNames
   );
   if (gangEventId !== null) {
     state.gangLedger.push({ gangEventId, payerIndex, payeeIndex, amount, reason, refunded: false });
   }
 }
 
-function collectScores(payeeIndex, payerIndices, amountPerPayer, reason) {
+function collectScores(payeeIndex, payerIndices, amountPerPayer, reason, winPatternNames) {
   if (!Array.isArray(payerIndices) || payerIndices.length === 0) {
     throw new Error("Score collection requires at least one payer");
   }
@@ -1085,7 +1099,8 @@ function collectScores(payeeIndex, payerIndices, amountPerPayer, reason) {
       payerIndex,
       -amountPerPayer,
       `${reason}：支付给${PLAYER_NAMES[payeeIndex]}`,
-      transactionId
+      transactionId,
+      winPatternNames
     );
   }
   const payerNames = payerIndices.map((payerIndex) => PLAYER_NAMES[payerIndex]).join("、");
@@ -1093,7 +1108,8 @@ function collectScores(payeeIndex, payerIndices, amountPerPayer, reason) {
     payeeIndex,
     amountPerPayer * payerIndices.length,
     `${reason}：收到${payerNames}支付（每家 ${amountPerPayer} 分）`,
-    transactionId
+    transactionId,
+    winPatternNames
   );
 }
 
@@ -1104,13 +1120,15 @@ function refundScoreTransfer(entry, message) {
     entry.payeeIndex,
     -entry.amount,
     `${message}：退还给${PLAYER_NAMES[entry.payerIndex]}`,
-    transactionId
+    transactionId,
+    null
   );
   applyScoreChange(
     entry.payerIndex,
     entry.amount,
     `${message}：收回${PLAYER_NAMES[entry.payeeIndex]}退还的分数`,
-    transactionId
+    transactionId,
+    null
   );
   entry.refunded = true;
 }
@@ -1483,9 +1501,16 @@ function renderScoreHistory() {
     : history.map((entry) => {
       const isGain = entry.amount > 0;
       const amountText = `${isGain ? "+" : ""}${entry.amount}分`;
+      const patternText = entry.winPatternNames === null
+        ? ""
+        : `<span class="score-history-patterns">番型：${escapeHtml(entry.winPatternNames.join("、"))}</span>`;
       return `
         <article class="score-history-entry ${isGain ? "score-history-gain" : "score-history-loss"}">
-          <div><span>${entry.transactionId}. ${escapeHtml(entry.reason)} <strong>${amountText}</strong>，总分 ${entry.balance}分</span></div>
+          <div class="score-history-main">${entry.transactionId}. ${escapeHtml(entry.reason)}</div>
+          <div class="score-history-meta">
+            ${patternText}
+            <span class="score-history-total"><strong>${amountText}</strong>，总分 ${entry.balance}分</span>
+          </div>
         </article>
       `;
     }).join("");
@@ -1561,12 +1586,7 @@ async function playWinAnnouncement(playerIndex, patterns) {
   }
   await playAnnouncementAudio(playerIndex, actionSounds.hu, ACTION_SOUND_LABELS.hu);
   await sleep(HU_TO_PATTERN_PAUSE_MS);
-  const specialPatterns = patterns.filter(
-    (pattern) => pattern.id !== "baseHu" && pattern.id !== "selfDraw"
-  );
-  const announcedPatterns = specialPatterns.length > 0
-    ? specialPatterns
-    : patterns.filter((pattern) => pattern.id === "baseHu");
+  const announcedPatterns = window.mahjongAI.announcementPatternsForWin(patterns);
   for (let index = 0; index < announcedPatterns.length; index += 1) {
     const pattern = announcedPatterns[index];
     const announcementName = pattern.name.replace(/x\d+$/u, "");
@@ -3060,7 +3080,7 @@ function settleGang(playerIndex, gangType, discarderIndex, tile) {
       throw new Error("直杠必须提供点杠者");
     }
     const amount = ruleset.scoring.basePoints * 2;
-    transferScore(discarderIndex, playerIndex, amount, `点杠${tileLabel(tile)}`, gangEventId);
+    transferScore(discarderIndex, playerIndex, amount, `点杠${tileLabel(tile)}`, gangEventId, null);
     logMessage(`刮风：${PLAYER_NAMES[discarderIndex]}向${PLAYER_NAMES[playerIndex]}支付 ${amount} 分。`);
     return;
   }
@@ -3075,7 +3095,8 @@ function settleGang(playerIndex, gangType, discarderIndex, tile) {
       playerIndex,
       amount,
       `${gangType === "concealed" ? "暗杠" : "补杠"}${tileLabel(tile)}`,
-      gangEventId
+      gangEventId,
+      null
     );
   }
   logMessage(`${gangType === "concealed" ? "下雨" : "巴杠"}：${PLAYER_NAMES[playerIndex]}向其余未胡玩家各收 ${amount} 分。`);
@@ -3704,11 +3725,12 @@ async function registerWins(entries, settlement) {
   state.visibleWonTiles.push(visibleWinningTile);
   for (const entry of scoredEntries) {
     const amount = window.mahjongAI.scoreAmount(ruleset.scoring, entry.score.cappedFan);
+    const winPatternNames = window.mahjongAI.displayPatternNamesForWin(entry.score.patterns);
     if (settlement.type === "selfDraw") {
       const payers = activePlayerIndices().filter((playerIndex) => playerIndex !== entry.playerIndex);
-      collectScores(entry.playerIndex, payers, amount, "自摸");
+      collectScores(entry.playerIndex, payers, amount, "自摸", winPatternNames);
     } else {
-      transferScore(settlement.payerIndex, entry.playerIndex, amount, "点炮", null);
+      transferScore(settlement.payerIndex, entry.playerIndex, amount, "点炮", null, winPatternNames);
     }
   }
 
@@ -3784,7 +3806,7 @@ async function finishDrawRound() {
     const flowerPigAmount = ruleset.scoring.basePoints * (2 ** ruleset.scoring.maxFan);
     for (const flowerPigIndex of flowerPigs) {
       for (const payeeIndex of eligiblePlayers) {
-        transferScore(flowerPigIndex, payeeIndex, flowerPigAmount, "查花猪", null);
+        transferScore(flowerPigIndex, payeeIndex, flowerPigAmount, "查花猪", null, null);
       }
     }
     logMessage(flowerPigs.length > 0
@@ -3800,6 +3822,7 @@ async function finishDrawRound() {
           payeeIndex,
           readyInfo.get(payeeIndex).maxAmount,
           "查大叫",
+          null,
           null
         );
       }

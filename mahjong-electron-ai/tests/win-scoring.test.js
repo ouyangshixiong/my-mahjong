@@ -1,7 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  announcementPatternsForWin,
   declaredGangPatternForWin,
+  displayPatternNamesForWin,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount
@@ -25,6 +27,49 @@ test("special self draws replace the ordinary self-draw fan", () => {
 test("discard wins do not add a self-draw fan", () => {
   assert.equal(operationPatternForWin("discard", null, xueliu.scoring), null);
   assert.equal(operationPatternForWin("discard", "qiangGang", xueliu.scoring), null);
+});
+
+test("plain self draws announce 自摸 instead of 平胡", () => {
+  assert.deepEqual(announcementPatternsForWin([
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" },
+    { id: "selfDraw", name: "自摸", fan: 1, type: "winOperation" }
+  ]), [
+    { id: "selfDraw", name: "自摸", fan: 1, type: "winOperation" }
+  ]);
+});
+
+test("plain discard wins still announce 平胡", () => {
+  assert.deepEqual(announcementPatternsForWin([
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" }
+  ]), [
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" }
+  ]);
+});
+
+test("special patterns take announcement priority over self draw", () => {
+  assert.deepEqual(announcementPatternsForWin([
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" },
+    { id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" },
+    { id: "selfDraw", name: "自摸", fan: 1, type: "winOperation" }
+  ]), [
+    { id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }
+  ]);
+});
+
+test("score history displays plain wins as 平胡 without the self-draw operation", () => {
+  assert.deepEqual(displayPatternNamesForWin([
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" },
+    { id: "selfDraw", name: "自摸", fan: 1, type: "winOperation" }
+  ]), ["平胡"]);
+});
+
+test("score history displays special win patterns by fan from high to low", () => {
+  assert.deepEqual(displayPatternNamesForWin([
+    { id: "baseHu", name: "平胡", fan: 0, type: "base" },
+    { id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" },
+    { id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" },
+    { id: "selfDraw", name: "自摸", fan: 1, type: "winOperation" }
+  ]), ["清一色", "对对胡"]);
 });
 
 test("all wins use the same exponential fan formula", () => {
