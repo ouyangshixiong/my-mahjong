@@ -2435,13 +2435,19 @@ async function advanceFrom(previousPlayerIndex) {
       return;
     }
 
-    const decision = await window.mahjongAI.recommendDiscard({
-      rulesetId: ruleset.id,
-      hand: state.hands[playerIndex],
-      visibleTiles: visibleTiles(),
-      lackSuit: state.lackSuits[playerIndex],
-      mustDiscard: false
-    });
+    const decision = state.winCounts[playerIndex] > 0
+      ? window.mahjongAI.decidePostWinDraw(
+        state.hands[playerIndex],
+        drawn,
+        isWinningHandLocal(state.hands[playerIndex], ruleset, state.lackSuits[playerIndex])
+      )
+      : await window.mahjongAI.recommendDiscard({
+        rulesetId: ruleset.id,
+        hand: state.hands[playerIndex],
+        visibleTiles: visibleTiles(),
+        lackSuit: state.lackSuits[playerIndex],
+        mustDiscard: false
+      });
 
     if (decision.action === "hu") {
       await registerWins([{
@@ -2465,7 +2471,7 @@ async function advanceFrom(previousPlayerIndex) {
     state.hands[playerIndex] = removeOne(state.hands[playerIndex], decision.discard);
     state.discards[playerIndex].push(decision.discard);
     state.turnPlayerIndex = null;
-    logMessage(`${PLAYER_NAMES[playerIndex]} 打出 ${decision.discardLabel}。`);
+    logMessage(`${PLAYER_NAMES[playerIndex]} 打出 ${tileLabel(decision.discard)}。`);
     render();
     await playTileSound(playerIndex, decision.discard);
     const turnCaptured = await resolveDiscardActions(playerIndex, decision.discard, discardContext);
@@ -2897,13 +2903,19 @@ async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   const ruleset = currentRuleset();
   state.turnPlayerIndex = playerIndex;
   renderTurnIndicator();
-  const decision = await window.mahjongAI.recommendDiscard({
-    rulesetId: ruleset.id,
-    hand: state.hands[playerIndex],
-    visibleTiles: visibleTiles(),
-    lackSuit: state.lackSuits[playerIndex],
-    mustDiscard: !allowHu
-  });
+  const decision = state.winCounts[playerIndex] > 0
+    ? window.mahjongAI.decidePostWinDraw(
+      state.hands[playerIndex],
+      drawnTile,
+      allowHu && isWinningHandLocal(state.hands[playerIndex], ruleset, state.lackSuits[playerIndex])
+    )
+    : await window.mahjongAI.recommendDiscard({
+      rulesetId: ruleset.id,
+      hand: state.hands[playerIndex],
+      visibleTiles: visibleTiles(),
+      lackSuit: state.lackSuits[playerIndex],
+      mustDiscard: !allowHu
+    });
   if (decision.action === "hu" && allowHu) {
     if (drawnTile === null) {
       throw new Error(`${PLAYER_NAMES[playerIndex]}自摸胡缺少本轮摸牌`);

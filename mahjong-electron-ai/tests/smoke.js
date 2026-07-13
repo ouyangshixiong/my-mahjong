@@ -144,6 +144,7 @@ async function main() {
       "client/main.js",
       "client/preload.js",
       "client/hand-layout.js",
+      "client/post-win-turn.js",
       "client/turn-order.js",
       "client/index.html",
       "client/renderer.js",

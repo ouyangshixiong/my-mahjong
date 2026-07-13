@@ -5,6 +5,7 @@ const {
   turnOrderFrom: getTurnOrderFrom
 } = require("./turn-order");
 const { arrangeHandForDrawPreview } = require("./hand-layout");
+const { decidePostWinDraw } = require("./post-win-turn");
 
 function getServiceUrl() {
   const arg = process.argv.find((item) => item.startsWith("--ai-service-url="));
@@ -80,6 +81,9 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   arrangeHandForDrawPreview(hand, drawnTile) {
     return arrangeHandForDrawPreview(hand, drawnTile);
+  },
+  decidePostWinDraw(hand, drawnTile, isWinning) {
+    return decidePostWinDraw(hand, drawnTile, isWinning);
   },
   updateMenuState(payload) {
     ipcRenderer.send("menu:update-state", payload);
