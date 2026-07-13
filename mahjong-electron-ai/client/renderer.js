@@ -902,6 +902,36 @@ function selfGangOptions(playerIndex) {
   });
 }
 
+function waitPreservingBotSelfGangOptions(playerIndex, drawnTile) {
+  if (playerIndex === 0) {
+    throw new Error("真人玩家的杠选项不能交给 AI 自动筛选");
+  }
+  if (!TILE_IDS.includes(drawnTile)) {
+    throw new Error(`${PLAYER_NAMES[playerIndex]}的 AI 杠牌筛选缺少有效摸牌`);
+  }
+  const ruleset = currentRuleset();
+  return window.mahjongAI.waitPreservingSelfGangOptions(
+    state.hands[playerIndex],
+    drawnTile,
+    selfGangOptions(playerIndex),
+    ruleset,
+    state.lackSuits[playerIndex]
+  );
+}
+
+function canBotClaimDiscardGang(playerIndex, tile) {
+  if (playerIndex === 0) {
+    throw new Error("真人玩家的直杠不能交给 AI 自动判断");
+  }
+  const ruleset = currentRuleset();
+  return window.mahjongAI.discardGangPreservesWaits(
+    state.hands[playerIndex],
+    tile,
+    ruleset,
+    state.lackSuits[playerIndex]
+  );
+}
+
 function gangOptionKey(option) {
   if (!["concealed", "added"].includes(option.type) || !Object.prototype.hasOwnProperty.call(TILE_BY_ID, option.tile)) {
     throw new Error("Invalid gang option");
@@ -2689,7 +2719,24 @@ async function advanceFrom(previousPlayerIndex) {
     render();
     await sleep(220);
 
-    const gangOptions = selfGangOptions(playerIndex);
+    const isWinning = isWinningHandLocal(
+      state.hands[playerIndex],
+      ruleset,
+      state.lackSuits[playerIndex]
+    );
+    if (isWinning) {
+      await registerWins([{
+        playerIndex,
+        winningHand: state.hands[playerIndex],
+        winningTile: drawn,
+        message: `${PLAYER_NAMES[playerIndex]} 自摸胡牌。`,
+        winContext: state.turnWinContexts[playerIndex]
+      }], { type: "selfDraw", payerIndex: null });
+      previous = playerIndex;
+      continue;
+    }
+
+    const gangOptions = waitPreservingBotSelfGangOptions(playerIndex, drawn);
     if (gangOptions.length > 0) {
       await executeSelfGang(playerIndex, gangOptions[0]);
       return;
@@ -2699,7 +2746,7 @@ async function advanceFrom(previousPlayerIndex) {
       ? window.mahjongAI.decidePostWinDraw(
         state.hands[playerIndex],
         drawn,
-        isWinningHandLocal(state.hands[playerIndex], ruleset, state.lackSuits[playerIndex])
+        isWinning
       )
       : await window.mahjongAI.recommendDiscard({
         rulesetId: ruleset.id,
@@ -2835,14 +2882,18 @@ async function resolveMeldClaims(discarderIndex, tile) {
       return false;
     }
     const tileCount = countHandTile(playerIndex, tile);
-    const canGang = ruleset.gameplay.allowGang && tileCount >= 3;
+    const canGang = ruleset.gameplay.allowGang
+      && tileCount >= 3
+      && (playerIndex === 0 || canBotClaimDiscardGang(playerIndex, tile));
     const canPeng = ruleset.gameplay.allowPeng && tileCount >= 2 && canClaimPeng(playerIndex, tile);
     return canGang || canPeng;
   });
   if (claimantIndex === undefined) {
     return false;
   }
-  const canGang = ruleset.gameplay.allowGang && countHandTile(claimantIndex, tile) >= 3;
+  const canGang = ruleset.gameplay.allowGang
+    && countHandTile(claimantIndex, tile) >= 3
+    && (claimantIndex === 0 || canBotClaimDiscardGang(claimantIndex, tile));
   const canPeng = ruleset.gameplay.allowPeng
     && countHandTile(claimantIndex, tile) >= 2
     && canClaimPeng(claimantIndex, tile);
@@ -3124,7 +3175,16 @@ async function continueAfterGang(playerIndex) {
   }
   render();
   await sleep(220);
-  const gangOptions = selfGangOptions(playerIndex);
+  const isWinning = isWinningHandLocal(
+    state.hands[playerIndex],
+    ruleset,
+    state.lackSuits[playerIndex]
+  );
+  if (isWinning) {
+    await performBotDiscard(playerIndex, true, drawn);
+    return;
+  }
+  const gangOptions = waitPreservingBotSelfGangOptions(playerIndex, drawn);
   if (gangOptions.length > 0) {
     await executeSelfGang(playerIndex, gangOptions[0]);
     return;

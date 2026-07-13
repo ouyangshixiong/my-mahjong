@@ -636,6 +636,89 @@ function winningTiles(hand, visibleTiles, ruleset, lackSuit) {
   return wins;
 }
 
+function structuralWinningTileIds(hand, ruleset, lackSuit) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  if (normalized.length % 3 !== 1) {
+    throw new Error("structuralWinningTileIds requires a 3n+1 tile hand");
+  }
+  return allowedTileIds(ruleset).filter((tile) => (
+    isWinningHand([...normalized, tile], ruleset, lackSuit)
+  ));
+}
+
+function preservesStructuralWaits(beforeHand, afterHand, ruleset, lackSuit) {
+  const beforeWaits = structuralWinningTileIds(beforeHand, ruleset, lackSuit);
+  if (beforeWaits.length === 0) {
+    return true;
+  }
+  const afterWaits = new Set(structuralWinningTileIds(afterHand, ruleset, lackSuit));
+  return beforeWaits.every((tile) => afterWaits.has(tile));
+}
+
+function assertGangOption(option, ruleset) {
+  if (option === null || typeof option !== "object") {
+    throw new Error("gang option must be an object");
+  }
+  if (!["concealed", "added"].includes(option.type)) {
+    throw new Error(`Unknown self gang option type: ${option.type}`);
+  }
+  assertTileAllowed(option.tile, ruleset);
+  if (option.type === "added" && (!Number.isInteger(option.meldIndex) || option.meldIndex < 0)) {
+    throw new Error("added gang option requires a non-negative meldIndex");
+  }
+}
+
+function handAfterSelfGang(hand, option, ruleset) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertGangOption(option, ruleset);
+  const removalCount = option.type === "concealed" ? 4 : 1;
+  const matchingCount = normalized.filter((tile) => tile === option.tile).length;
+  if (matchingCount < removalCount) {
+    throw new Error(`${option.type} gang is missing ${option.tile} tiles`);
+  }
+  return removeTiles(
+    normalized,
+    Array.from({ length: removalCount }, () => option.tile),
+    ruleset
+  );
+}
+
+function waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertTileAllowed(drawnTile, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  if (!Array.isArray(gangOptions)) {
+    throw new Error("gangOptions must be an array");
+  }
+  const baselineHand = removeOneTile(normalized, drawnTile, ruleset);
+  if (baselineHand.length % 3 !== 1) {
+    throw new Error("post-draw baseline hand must contain 3n+1 tiles");
+  }
+  return gangOptions.filter((option) => {
+    const afterGang = handAfterSelfGang(normalized, option, ruleset);
+    if (afterGang.length % 3 !== 1) {
+      throw new Error("self gang must leave a 3n+1 tile hand before replacement draw");
+    }
+    return preservesStructuralWaits(baselineHand, afterGang, ruleset, lackSuit);
+  });
+}
+
+function discardGangPreservesWaits(hand, tile, ruleset, lackSuit) {
+  const normalized = normalizeHand(hand, ruleset);
+  assertTileAllowed(tile, ruleset);
+  assertLackSuit(lackSuit, ruleset);
+  if (normalized.length % 3 !== 1) {
+    throw new Error("discard gang check requires a 3n+1 tile hand");
+  }
+  const matchingCount = normalized.filter((handTile) => handTile === tile).length;
+  if (matchingCount < 3) {
+    throw new Error(`discard gang is missing ${tile} tiles`);
+  }
+  const afterGang = removeTiles(normalized, [tile, tile, tile], ruleset);
+  return preservesStructuralWaits(normalized, afterGang, ruleset, lackSuit);
+}
+
 function structuralShapeScore(hand, ruleset) {
   const normalized = normalizeHand(hand, ruleset);
   const counts = countTiles(normalized, ruleset);
@@ -911,6 +994,8 @@ module.exports = {
   chooseLackSuit,
   isWinningHand,
   winningTiles,
+  waitPreservingSelfGangOptions,
+  discardGangPreservesWaits,
   readyAfterDiscards,
   estimateShanten,
   shapeScore,

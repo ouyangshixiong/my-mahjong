@@ -6,6 +6,10 @@ const {
 } = require("./turn-order");
 const { arrangeHandForDrawPreview } = require("./hand-layout");
 const { decidePostWinDraw } = require("./post-win-turn");
+const {
+  discardGangPreservesWaits,
+  waitPreservingSelfGangOptions
+} = require("../server/mahjong");
 
 function getServiceUrl() {
   const arg = process.argv.find((item) => item.startsWith("--ai-service-url="));
@@ -84,6 +88,12 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   decidePostWinDraw(hand, drawnTile, isWinning) {
     return decidePostWinDraw(hand, drawnTile, isWinning);
+  },
+  waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit) {
+    return waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit);
+  },
+  discardGangPreservesWaits(hand, tile, ruleset, lackSuit) {
+    return discardGangPreservesWaits(hand, tile, ruleset, lackSuit);
   },
   updateMenuState(payload) {
     ipcRenderer.send("menu:update-state", payload);

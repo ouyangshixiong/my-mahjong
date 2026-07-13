@@ -5,11 +5,13 @@ const {
   assertExchangeSelection,
   chooseExchangeTiles,
   chooseLackSuit,
+  discardGangPreservesWaits,
   exchangeHands,
   isWinningHand,
   legalDiscardTiles,
   readyAfterDiscards,
   winningTiles,
+  waitPreservingSelfGangOptions,
   scoreHand
 } = require("../server/mahjong");
 const { getRuleset } = require("../server/rulesets");
@@ -51,6 +53,57 @@ test("finds winning tiles for a ready hand", () => {
   ];
   const waits = winningTiles(hand, [], xuezhan, "s");
   assert.deepEqual(waits.map((wait) => wait.tile), ["m9"]);
+});
+
+test("screenshot hand refuses the eight-character concealed gang that loses the seven-character wait", () => {
+  const handAfterDraw = [
+    "m2", "m3", "m4", "m5", "m6", "m6", "m7",
+    "m8", "m8", "m8", "m8"
+  ];
+  const option = { type: "concealed", tile: "m8", meldIndex: null };
+
+  assert.equal(isWinningHand(handAfterDraw, xuezhan, "s"), false);
+  assert.deepEqual(
+    waitPreservingSelfGangOptions(handAfterDraw, "m8", [option], xuezhan, "s"),
+    []
+  );
+});
+
+test("AI may concealed-gang when every existing wait is preserved", () => {
+  const handAfterDraw = [
+    "m1", "m1", "m1", "m1",
+    "m2", "m3", "m4",
+    "m5", "m6", "m7",
+    "p2", "p3", "p4",
+    "p9"
+  ];
+  const option = { type: "concealed", tile: "m1", meldIndex: null };
+
+  assert.deepEqual(
+    waitPreservingSelfGangOptions(handAfterDraw, "m1", [option], xuezhan, "s"),
+    [option]
+  );
+});
+
+test("AI refuses a discard gang that destroys the screenshot hand waits", () => {
+  const readyHand = [
+    "m2", "m3", "m4", "m5", "m6", "m6", "m7",
+    "m8", "m8", "m8"
+  ];
+
+  assert.equal(discardGangPreservesWaits(readyHand, "m8", xuezhan, "s"), false);
+});
+
+test("AI may claim a discard gang when the current wait is preserved", () => {
+  const readyHand = [
+    "m1", "m1", "m1",
+    "m2", "m3", "m4",
+    "m5", "m6", "m7",
+    "p2", "p3", "p4",
+    "p9"
+  ];
+
+  assert.equal(discardGangPreservesWaits(readyHand, "m1", xuezhan, "s"), true);
 });
 
 test("lists ready discards for a 14-tile hand", () => {

@@ -6,6 +6,14 @@ const { decidePostWinDraw } = require("../client/post-win-turn");
 
 const renderer = fs.readFileSync(path.join(__dirname, "../client/renderer.js"), "utf8");
 
+function functionSource(name, nextName) {
+  const start = renderer.indexOf(`function ${name}`);
+  const end = renderer.indexOf(`function ${nextName}`, start);
+  assert.notEqual(start, -1, `${name} must exist`);
+  assert.notEqual(end, -1, `${nextName} must follow ${name}`);
+  return renderer.slice(start, end);
+}
+
 test("a non-winning draw after hu must be discarded without changing the locked hand", () => {
   const lockedHand = ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9", "p2", "p2", "p3", "p4"];
   const handAfterDraw = [...lockedHand, "s6"];
@@ -35,4 +43,19 @@ test("hand locking depends only on whether the player has won, not on the rulese
 
   assert.equal(lockedDecisionChecks.length, 2);
   assert.doesNotMatch(renderer, /state\.winCounts\[playerIndex\] > 0 && ruleset\.gameplay\.allowRepeatWins/);
+});
+
+test("bot draw flow checks hu before considering a gang", () => {
+  const advanceSource = functionSource("advanceFrom", "nextActivePlayer");
+  const afterGangSource = functionSource("continueAfterGang", "continuePostWinSelfTurn");
+
+  assert.ok(advanceSource.indexOf("if (isWinning)") < advanceSource.indexOf("waitPreservingBotSelfGangOptions"));
+  assert.ok(afterGangSource.indexOf("if (isWinning)") < afterGangSource.indexOf("waitPreservingBotSelfGangOptions"));
+});
+
+test("bot gang claims must preserve existing waits", () => {
+  const meldClaimSource = functionSource("resolveMeldClaims", "executePeng");
+
+  assert.match(renderer, /window\.mahjongAI\.waitPreservingSelfGangOptions/);
+  assert.match(meldClaimSource, /canBotClaimDiscardGang/);
 });
