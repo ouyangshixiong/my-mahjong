@@ -1348,6 +1348,10 @@ function scoreHandLocal(hand, ruleset, lackSuit, melds, winContext, settlementTy
     }
   }
   if (ruleset.gameplay.requiresDingque) {
+    const gangPattern = window.mahjongAI.declaredGangPatternForWin(melds);
+    if (gangPattern !== null) {
+      patterns.push(gangPattern);
+    }
     const rootCount = window.mahjongAI.rootCountForWin(hand, melds);
     if (rootCount > 0) {
       patterns.push({ id: "gen", name: `根x${rootCount}`, fan: rootCount, type: "rootEach" });

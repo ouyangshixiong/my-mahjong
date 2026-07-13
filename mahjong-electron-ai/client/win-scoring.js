@@ -17,6 +17,22 @@ function rootCountForWin(hand, melds) {
   return [...counts.values()].filter((count) => count === 4).length;
 }
 
+function declaredGangPatternForWin(melds) {
+  if (!Array.isArray(melds)) {
+    throw new Error("melds must be an array");
+  }
+  const gangCount = melds.filter((meld) => meld.type === "gang").length;
+  if (gangCount === 0) {
+    return null;
+  }
+  return Object.freeze({
+    id: "gang",
+    name: `杠x${gangCount}`,
+    fan: gangCount,
+    type: "gangEach"
+  });
+}
+
 function operationPatternForWin(settlementType, winContext, scoring) {
   if (settlementType !== "selfDraw" && settlementType !== "discard") {
     throw new Error(`Unknown settlement type: ${settlementType}`);
@@ -58,6 +74,7 @@ function scoreAmount(scoring, cappedFan) {
 }
 
 module.exports = {
+  declaredGangPatternForWin,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount

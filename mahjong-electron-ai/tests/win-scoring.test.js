@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  declaredGangPatternForWin,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount
@@ -39,6 +40,29 @@ test("declared gangs settle separately and are not counted as roots", () => {
     ["m1"],
     [{ type: "peng", tiles: ["m1", "m1", "m1"] }]
   ), 1);
+});
+
+test("each declared gang adds one fan to later wins", () => {
+  const oneGang = declaredGangPatternForWin([
+    { type: "gang", tiles: ["s9", "s9", "s9", "s9"] }
+  ]);
+  const twoGangs = declaredGangPatternForWin([
+    { type: "gang", tiles: ["s9", "s9", "s9", "s9"] },
+    { type: "peng", tiles: ["m1", "m1", "m1"] },
+    { type: "gang", tiles: ["p5", "p5", "p5", "p5"] }
+  ]);
+
+  assert.deepEqual(oneGang, { id: "gang", name: "杠x1", fan: 1, type: "gangEach" });
+  assert.deepEqual(twoGangs, { id: "gang", name: "杠x2", fan: 2, type: "gangEach" });
+  assert.equal(scoreAmount(xueliu.scoring, oneGang.fan), 200);
+  assert.equal(scoreAmount(xueliu.scoring, twoGangs.fan), 400);
+});
+
+test("wins without a declared gang do not gain gang fan", () => {
+  assert.equal(declaredGangPatternForWin([]), null);
+  assert.equal(declaredGangPatternForWin([
+    { type: "peng", tiles: ["m1", "m1", "m1"] }
+  ]), null);
 });
 
 test("documented popular combinations keep their expected multipliers", () => {
