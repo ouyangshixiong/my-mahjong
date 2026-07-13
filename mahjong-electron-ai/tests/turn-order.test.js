@@ -17,12 +17,19 @@ test("Mahjong turns run counterclockwise from East to South, West, and North", (
   assert.equal(seatAfter(0, 4), 0);
 });
 
-test("seat winds match the dealer and relative player positions", () => {
+test("player circles start empty and are reserved for lack suits", () => {
   const html = fs.readFileSync(path.join(__dirname, "../client/index.html"), "utf8");
-  assert.match(html, /seat-avatar avatar-self">东</);
-  assert.match(html, /seat-avatar avatar-right">南</);
-  assert.match(html, /seat-avatar avatar-top">西</);
-  assert.match(html, /seat-avatar avatar-left">北</);
+  assert.match(html, /id="selfLackSuit" class="seat-avatar avatar-self"><\/span>/);
+  assert.match(html, /id="player3LackSuit" class="seat-avatar avatar-right"><\/span>/);
+  assert.match(html, /id="player2LackSuit" class="seat-avatar avatar-top"><\/span>/);
+  assert.match(html, /id="player1LackSuit" class="seat-avatar avatar-left"><\/span>/);
+});
+
+test("player circles reveal the selected suit only after exchange confirmation", () => {
+  const renderer = fs.readFileSync(path.join(__dirname, "../client/renderer.js"), "utf8");
+  assert.match(renderer, /lackSuitsRevealed: false/);
+  assert.match(renderer, /function formatLackSuit\(playerIndex\)[\s\S]*?!state\.lackSuitsRevealed[\s\S]*?return "";[\s\S]*?if \(lackSuit === null\) \{[\s\S]*?return "";[\s\S]*?return suitLabelLocal\(lackSuit\);/);
+  assert.match(renderer, /async function confirmExchange\(\)[\s\S]*?state\.awaitingExchange = false;\s*state\.lackSuitsRevealed = true;\s*state\.exchangeAnimation = animationState;/);
 });
 
 test("center compass follows north-up mahjong directions", () => {

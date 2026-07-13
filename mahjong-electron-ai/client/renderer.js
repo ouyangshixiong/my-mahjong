@@ -122,6 +122,7 @@ const state = {
   turnDrawnTiles: [null, null, null, null],
   turnPlayerIndex: null,
   lackSuits: [null, null, null, null],
+  lackSuitsRevealed: false,
   awaitingExchange: false,
   exchangeSelections: [[], [], [], []],
   exchangePrimarySuit: null,
@@ -1893,9 +1894,9 @@ function render() {
   nodes.selfHand.dataset.action = showPostMeldHint ? state.postMeldAction : "";
 
   nodes.selfLackSuit.textContent = formatLackSuit(0);
-  nodes.player1LackSuit.textContent = formatLackSuit(1, true);
-  nodes.player2LackSuit.textContent = formatLackSuit(2, true);
-  nodes.player3LackSuit.textContent = formatLackSuit(3, true);
+  nodes.player1LackSuit.textContent = formatLackSuit(1);
+  nodes.player2LackSuit.textContent = formatLackSuit(2);
+  nodes.player3LackSuit.textContent = formatLackSuit(3);
   nodes.selfScore.textContent = `${state.scores[0]}分`;
   nodes.player1Score.textContent = `${state.scores[1]}分`;
   nodes.player2Score.textContent = `${state.scores[2]}分`;
@@ -1955,17 +1956,16 @@ function render() {
   });
 }
 
-function formatLackSuit(playerIndex, includePrefix = false) {
+function formatLackSuit(playerIndex) {
   const ruleset = state.ruleset;
-  if (ruleset === null || !ruleset.gameplay.requiresDingque) {
-    return includePrefix ? "" : "本玩法无定缺";
+  if (ruleset === null || !ruleset.gameplay.requiresDingque || !state.lackSuitsRevealed) {
+    return "";
   }
   const lackSuit = state.lackSuits[playerIndex];
   if (lackSuit === null) {
-    return includePrefix ? "" : "未定";
+    return "";
   }
-  const text = `缺${suitLabelLocal(lackSuit)}`;
-  return includePrefix ? `· ${text}` : text;
+  return suitLabelLocal(lackSuit);
 }
 
 function roundStatusText() {
@@ -2132,6 +2132,7 @@ async function startRound() {
   state.turnDrawnTiles = [null, null, null, null];
   state.turnPlayerIndex = null;
   state.lackSuits = [null, null, null, null];
+  state.lackSuitsRevealed = false;
   state.awaitingExchange = false;
   state.exchangeSelections = [[], [], [], []];
   state.exchangePrimarySuit = null;
@@ -2311,6 +2312,7 @@ async function confirmExchange() {
   const animationState = Object.freeze({ direction });
   state.exchangeDirection = direction;
   state.awaitingExchange = false;
+  state.lackSuitsRevealed = true;
   state.exchangeAnimation = animationState;
   logMessage(`本局${exchangeDirectionLabel(direction)}换牌，正在交换四家的三张牌。`);
   render();
