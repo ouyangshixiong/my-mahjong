@@ -142,6 +142,7 @@ const state = {
   recommendedTile: null,
   recommendedLackSuit: null,
   meldEffects: [null, null, null, null],
+  winEffects: [null, null, null, null],
   selfDrawEffect: null,
   postMeldAction: null,
   advisorVisible: false,
@@ -153,6 +154,8 @@ let playerResponseDeadline = null;
 let playerResponseTarget = null;
 let nextMeldEffectId = 1;
 const meldEffectTimers = [null, null, null, null];
+let nextWinEffectId = 1;
+const winEffectTimers = [null, null, null, null];
 let nextSelfDrawEffectId = 1;
 let selfDrawEffectTimer = null;
 
@@ -1624,6 +1627,16 @@ function clearMeldEffects() {
   state.meldEffects = [null, null, null, null];
 }
 
+function clearWinEffects() {
+  for (let playerIndex = 0; playerIndex < winEffectTimers.length; playerIndex += 1) {
+    if (winEffectTimers[playerIndex] !== null) {
+      clearTimeout(winEffectTimers[playerIndex]);
+      winEffectTimers[playerIndex] = null;
+    }
+  }
+  state.winEffects = [null, null, null, null];
+}
+
 function clearSelfDrawEffect() {
   if (selfDrawEffectTimer !== null) {
     clearTimeout(selfDrawEffectTimer);
@@ -1672,6 +1685,29 @@ function triggerMeldEffect(playerIndex, meldIndex, type) {
     if (state.meldEffects[playerIndex]?.effectId === effectId) {
       state.meldEffects[playerIndex] = null;
       meldEffectTimers[playerIndex] = null;
+      render();
+    }
+  }, 1800);
+}
+
+function triggerWinEffect(playerIndex, winIndex, tile) {
+  assertPlayerIndexLocal(playerIndex);
+  if (!Number.isInteger(winIndex) || winIndex < 0) {
+    throw new Error(`胡牌特效索引非法：${winIndex}`);
+  }
+  if (state.wonTiles[playerIndex][winIndex] !== tile) {
+    throw new Error(`${PLAYER_NAMES[playerIndex]}的胡牌特效没有对应胡牌张`);
+  }
+  if (winEffectTimers[playerIndex] !== null) {
+    clearTimeout(winEffectTimers[playerIndex]);
+  }
+  const effectId = nextWinEffectId;
+  nextWinEffectId += 1;
+  state.winEffects[playerIndex] = { effectId, winIndex, tile };
+  winEffectTimers[playerIndex] = setTimeout(() => {
+    if (state.winEffects[playerIndex]?.effectId === effectId) {
+      state.winEffects[playerIndex] = null;
+      winEffectTimers[playerIndex] = null;
       render();
     }
   }, 1800);
@@ -1832,6 +1868,10 @@ function createRiverTile(tile, index, tileCount) {
 function createWonTile(tile, playerIndex, winIndex) {
   const element = createTile(tile, "small", null);
   element.classList.add("won-tile");
+  const effect = state.winEffects[playerIndex];
+  if (effect !== null && effect.winIndex === winIndex && effect.tile === tile) {
+    element.classList.add("won-tile-effect");
+  }
   element.dataset.winLabel = `胡${winIndex + 1}`;
   element.setAttribute("role", "listitem");
   element.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}第 ${winIndex + 1} 次胡牌张：${tileLabel(tile)}`);
@@ -2421,6 +2461,7 @@ async function startRound() {
   const ruleset = currentRuleset();
   clearPlayerResponseTimer();
   clearMeldEffects();
+  clearWinEffects();
   clearSelfDrawEffect();
   state.wall = buildWall(ruleset);
   state.hands = [[], [], [], []];
@@ -3680,6 +3721,7 @@ async function registerWins(entries, settlement) {
       state.hands[entry.playerIndex] = removeOne(state.hands[entry.playerIndex], entry.winningTile);
     }
     state.wonTiles[entry.playerIndex].push(winningTile);
+    triggerWinEffect(entry.playerIndex, state.wonTiles[entry.playerIndex].length - 1, winningTile);
     state.turnWinContexts[entry.playerIndex] = null;
     clearTurnDrawnTile(entry.playerIndex);
     state.pendingGangEventIds[entry.playerIndex] = [];

@@ -28,6 +28,16 @@ test("winning tiles render in four independent trays", () => {
   assert.doesNotMatch(renderer, /renderedHandTiles/);
 });
 
+test("new winning tiles receive a temporary hu effect", () => {
+  assert.match(renderer, /winEffects:\s*\[null, null, null, null\]/);
+  assert.match(renderer, /function triggerWinEffect\(playerIndex, winIndex, tile\)/);
+  assert.match(renderer, /state\.wonTiles\[entry\.playerIndex\]\.push\(winningTile\);\s*triggerWinEffect\(/);
+  assert.match(renderer, /element\.classList\.add\("won-tile-effect"\)/);
+  assert.match(css, /\.won-tile-effect\s*\{[^}]*animation:\s*won-tile-impact 1\.8s/s);
+  assert.match(css, /\.won-tile-effect::after\s*\{[^}]*content:\s*"胡"/s);
+  assert.match(css, /\.won-tiles-vertical \.won-tile-effect::after\s*\{[^}]*won-side-tile-label/s);
+});
+
 test("winning tile trays wrap toward the table center", () => {
   assert.match(css, /\.won-tiles\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:/s);
   assert.match(css, /\.won-tiles-left\.won-tiles-wrapped\s*\{\s*left:\s*248px;\s*\}/);
