@@ -10,6 +10,7 @@ const {
   announcementPatternsForWin,
   declaredGangPatternForWin,
   displayPatternNamesForWin,
+  multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount
@@ -105,6 +106,9 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   displayPatternNamesForWin(patterns) {
     return displayPatternNamesForWin(patterns);
+  },
+  multipleWinnerAnnouncementForCount(winnerCount) {
+    return multipleWinnerAnnouncementForCount(winnerCount);
   },
   operationPatternForWin(settlementType, winContext, scoring) {
     return operationPatternForWin(settlementType, winContext, scoring);

@@ -102,6 +102,16 @@ function announcementPatternsForWin(patterns) {
   return basePatterns;
 }
 
+function multipleWinnerAnnouncementForCount(winnerCount) {
+  if (!Number.isInteger(winnerCount) || winnerCount < 1 || winnerCount > 3) {
+    throw new Error("discard winner count must be an integer from 1 to 3");
+  }
+  if (winnerCount === 1) {
+    return null;
+  }
+  return winnerCount === 2 ? "一炮双响" : "一炮三响";
+}
+
 function displayPatternNamesForWin(patterns) {
   validateWinPatterns(patterns);
   const specialPatterns = patterns.filter(
@@ -133,6 +143,7 @@ module.exports = {
   announcementPatternsForWin,
   declaredGangPatternForWin,
   displayPatternNamesForWin,
+  multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount

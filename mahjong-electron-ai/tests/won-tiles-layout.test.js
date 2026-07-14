@@ -38,6 +38,15 @@ test("new winning tiles receive a temporary hu effect", () => {
   assert.match(css, /\.won-tiles-vertical \.won-tile-effect::after\s*\{[^}]*won-side-tile-label/s);
 });
 
+test("one-discard multi-wins play a dedicated table announcement before player win voices", () => {
+  assert.equal(fs.existsSync(path.join(clientDirectory, "../assets/sounds/nv/effects/one-discard-two-winners.wav")), true);
+  assert.equal(fs.existsSync(path.join(clientDirectory, "../assets/sounds/nv/effects/one-discard-three-winners.wav")), true);
+  assert.match(renderer, /"一炮双响": "\.\.\/assets\/sounds\/nv\/effects\/one-discard-two-winners\.wav"/);
+  assert.match(renderer, /"一炮三响": "\.\.\/assets\/sounds\/nv\/effects\/one-discard-three-winners\.wav"/);
+  assert.match(renderer, /settlement\.source === "river" && scoredEntries\.length > 1/);
+  assert.match(renderer, /await playMultipleWinnerAnnouncement\(scoredEntries\.length\);[\s\S]*for \(const entry of scoredEntries\)/);
+});
+
 test("winning tile trays wrap toward the table center", () => {
   assert.match(css, /\.won-tiles\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:/s);
   assert.match(css, /\.won-tiles-left\.won-tiles-wrapped\s*\{\s*left:\s*248px;\s*\}/);

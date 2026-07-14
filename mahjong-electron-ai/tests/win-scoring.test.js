@@ -4,6 +4,7 @@ const {
   announcementPatternsForWin,
   declaredGangPatternForWin,
   displayPatternNamesForWin,
+  multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
   scoreAmount
@@ -44,6 +45,14 @@ test("plain discard wins still announce 平胡", () => {
   ]), [
     { id: "baseHu", name: "平胡", fan: 0, type: "base" }
   ]);
+});
+
+test("discard multi-wins announce one discard with two or three winners", () => {
+  assert.equal(multipleWinnerAnnouncementForCount(1), null);
+  assert.equal(multipleWinnerAnnouncementForCount(2), "一炮双响");
+  assert.equal(multipleWinnerAnnouncementForCount(3), "一炮三响");
+  assert.throws(() => multipleWinnerAnnouncementForCount(0), /integer from 1 to 3/);
+  assert.throws(() => multipleWinnerAnnouncementForCount(4), /integer from 1 to 3/);
 });
 
 test("special patterns take announcement priority over self draw", () => {

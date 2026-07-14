@@ -58,6 +58,7 @@ const EXCHANGE_ANIMATION_DURATION_MS = 2400;
 const EXCHANGE_RESULT_PAUSE_MS = 450;
 const HU_TO_PATTERN_PAUSE_MS = 550;
 const PATTERN_ANNOUNCEMENT_PAUSE_MS = 300;
+const MULTIPLE_WINNER_ANNOUNCEMENT_PAUSE_MS = 450;
 const WIN_RESULT_PAUSE_MS = 1200;
 const SELF_DRAW_EFFECT_DURATION_MS = 1000;
 const TILE_ART_DIRECTORY = "../assets/img/tiles";
@@ -90,6 +91,10 @@ const WIN_PATTERN_SOUND_PATHS = Object.freeze({
   "杠上炮": "../assets/sounds/nv/patterns/gang-shang-pao.wav",
   "抢杠": "../assets/sounds/nv/patterns/qiang-gang.wav",
   "海底": "../assets/sounds/nv/patterns/hai-di.wav"
+});
+const MULTIPLE_WINNER_SOUND_PATHS = Object.freeze({
+  "一炮双响": "../assets/sounds/nv/effects/one-discard-two-winners.wav",
+  "一炮三响": "../assets/sounds/nv/effects/one-discard-three-winners.wav"
 });
 const TILE_SOUND_PATHS = Object.freeze(Object.fromEntries(TILE_DEFS.map((tile) => {
   const rank = Number.parseInt(tile.id.slice(1), 10);
@@ -252,6 +257,13 @@ const winPatternSounds = Object.freeze(Object.fromEntries(
     const audio = new Audio(path);
     audio.preload = "auto";
     return [patternName, audio];
+  })
+));
+const multipleWinnerSounds = Object.freeze(Object.fromEntries(
+  Object.entries(MULTIPLE_WINNER_SOUND_PATHS).map(([announcement, path]) => {
+    const audio = new Audio(path);
+    audio.preload = "auto";
+    return [announcement, audio];
   })
 ));
 
@@ -1578,6 +1590,46 @@ function playAnnouncementAudio(playerIndex, audio, label) {
       reject(new Error(`${PLAYER_NAMES[playerIndex]}${voiceProfile.name}声线播放“${label}”失败：${error.message}`));
     });
   });
+}
+
+function playTableAnnouncementAudio(audio, label) {
+  audio.pause();
+  audio.currentTime = 0;
+  audio.preservesPitch = false;
+  audio.playbackRate = 1;
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("error", handleError);
+    };
+    const handleEnded = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error(`牌桌语音“${label}”播放失败，媒体错误码：${audio.error.code}`));
+    };
+    audio.addEventListener("ended", handleEnded, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    audio.play().catch((error) => {
+      cleanup();
+      reject(new Error(`牌桌语音“${label}”播放失败：${error.message}`));
+    });
+  });
+}
+
+async function playMultipleWinnerAnnouncement(winnerCount) {
+  const announcement = window.mahjongAI.multipleWinnerAnnouncementForCount(winnerCount);
+  if (announcement === null) {
+    return;
+  }
+  const audio = multipleWinnerSounds[announcement];
+  if (audio === undefined) {
+    throw new Error(`未配置多人胡语音：${announcement}`);
+  }
+  await playTableAnnouncementAudio(audio, announcement);
+  await sleep(MULTIPLE_WINNER_ANNOUNCEMENT_PAUSE_MS);
 }
 
 async function playWinAnnouncement(playerIndex, patterns) {
@@ -3732,6 +3784,13 @@ async function registerWins(entries, settlement) {
     } else {
       transferScore(settlement.payerIndex, entry.playerIndex, amount, "点炮", null, winPatternNames);
     }
+  }
+
+  if (settlement.type === "discard" && settlement.source === "river" && scoredEntries.length > 1) {
+    const announcement = window.mahjongAI.multipleWinnerAnnouncementForCount(scoredEntries.length);
+    logMessage(`${PLAYER_NAMES[settlement.payerIndex]}${announcement}，${scoredEntries.map((entry) => PLAYER_NAMES[entry.playerIndex]).join("、")}共同胡${tileLabel(settlement.winningTile)}。`);
+    render();
+    await playMultipleWinnerAnnouncement(scoredEntries.length);
   }
 
   for (const entry of scoredEntries) {
