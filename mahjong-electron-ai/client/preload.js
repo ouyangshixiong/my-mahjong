@@ -13,7 +13,8 @@ const {
   multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
-  scoreAmount
+  scoreAmount,
+  winContextAfterDiscard
 } = require("./win-scoring");
 const {
   discardGangPreservesWaits,
@@ -118,6 +119,9 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   scoreAmount(scoring, cappedFan) {
     return scoreAmount(scoring, cappedFan);
+  },
+  winContextAfterDiscard(drawWinContext) {
+    return winContextAfterDiscard(drawWinContext);
   },
   waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit) {
     return waitPreservingSelfGangOptions(hand, drawnTile, gangOptions, ruleset, lackSuit);

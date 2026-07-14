@@ -1,5 +1,12 @@
 const SPECIAL_SELF_DRAW_CONTEXTS = Object.freeze(["gangShangHua", "haiDi"]);
 
+function winContextAfterDiscard(drawWinContext) {
+  if (![null, "gangShangHua", "haiDi"].includes(drawWinContext)) {
+    throw new Error(`Invalid draw win context before discard: ${drawWinContext}`);
+  }
+  return drawWinContext === "gangShangHua" ? "gangShangPao" : null;
+}
+
 function rootCountForWin(hand, melds) {
   if (!Array.isArray(hand) || !Array.isArray(melds)) {
     throw new Error("hand and melds must be arrays");
@@ -42,6 +49,9 @@ function operationPatternForWin(settlementType, winContext, scoring) {
   }
   if (scoring.specialSelfDrawMode !== "replace" && scoring.specialSelfDrawMode !== "stack") {
     throw new Error("scoring.specialSelfDrawMode must be replace or stack");
+  }
+  if (winContext === "haiDi" && settlementType !== "selfDraw") {
+    throw new Error("haiDi win context requires a self-draw settlement");
   }
   if (settlementType === "discard" || scoring.selfDrawFan === 0) {
     return null;
@@ -146,5 +156,6 @@ module.exports = {
   multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
-  scoreAmount
+  scoreAmount,
+  winContextAfterDiscard
 };

@@ -17,7 +17,8 @@ const {
   multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
-  scoreAmount
+  scoreAmount,
+  winContextAfterDiscard
 } = require("../game/win-scoring");
 
 const DEVELOPMENT_HTTP_HOSTS = Object.freeze(["127.0.0.1", "localhost", "10.0.2.2"]);
@@ -233,6 +234,7 @@ window.mahjongAI = Object.freeze({
   operationPatternForWin,
   rootCountForWin,
   scoreAmount,
+  winContextAfterDiscard,
   waitPreservingSelfGangOptions,
   discardGangPreservesWaits,
   updateMenuState(payload) {

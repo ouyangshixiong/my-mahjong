@@ -2938,13 +2938,7 @@ function playersAfter(playerIndex) {
 }
 
 function discardWinContext(discardContext) {
-  if (discardContext === "gangShangHua") {
-    return "gangShangPao";
-  }
-  if (state.wall.length === 0) {
-    return "haiDi";
-  }
-  return null;
+  return window.mahjongAI.winContextAfterDiscard(discardContext);
 }
 
 async function resolveDiscardActions(discarderIndex, tile, discardContext) {

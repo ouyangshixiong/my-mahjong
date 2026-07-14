@@ -7,7 +7,8 @@ const {
   multipleWinnerAnnouncementForCount,
   operationPatternForWin,
   rootCountForWin,
-  scoreAmount
+  scoreAmount,
+  winContextAfterDiscard
 } = require("../game/win-scoring");
 const { getRuleset } = require("../game/rulesets");
 
@@ -28,6 +29,16 @@ test("special self draws replace the ordinary self-draw fan", () => {
 test("discard wins do not add a self-draw fan", () => {
   assert.equal(operationPatternForWin("discard", null, xueliu.scoring), null);
   assert.equal(operationPatternForWin("discard", "qiangGang", xueliu.scoring), null);
+});
+
+test("hai di only applies when the last wall tile wins by self draw", () => {
+  assert.equal(winContextAfterDiscard("haiDi"), null);
+  assert.equal(winContextAfterDiscard(null), null);
+  assert.equal(winContextAfterDiscard("gangShangHua"), "gangShangPao");
+  assert.throws(
+    () => operationPatternForWin("discard", "haiDi", xueliu.scoring),
+    /requires a self-draw settlement/
+  );
 });
 
 test("plain self draws announce 自摸 instead of 平胡", () => {
