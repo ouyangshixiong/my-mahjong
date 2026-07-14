@@ -2345,13 +2345,20 @@ function render() {
     return optionNode;
   });
   replaceChildren(nodes.gangSelect, gangOptionNodes);
-  nodes.gangSelect.hidden = state.pendingClaim !== null || gangOptions.length <= 1;
+  nodes.gangSelect.hidden = state.pendingHu !== null || state.pendingClaim !== null || gangOptions.length <= 1;
   const canSelfHu = canDiscard
     && state.selfDrawEligible
     && isWinningHandLocal(state.hands[0], ruleset, state.lackSuits[0]);
   nodes.huButton.disabled = state.pendingHu === null && !canSelfHu;
-  nodes.pengButton.disabled = state.pendingClaim === null || !state.pendingClaim.canPeng;
-  nodes.gangButton.disabled = (state.pendingClaim === null || !state.pendingClaim.canGang) && gangOptions.length === 0;
+  nodes.pengButton.disabled = !(
+    (state.pendingHu !== null && state.pendingHu.type === "discard" && state.pendingHu.canPeng)
+    || (state.pendingClaim !== null && state.pendingClaim.canPeng)
+  );
+  nodes.gangButton.disabled = !(
+    (state.pendingHu !== null && state.pendingHu.type === "discard" && state.pendingHu.canGang)
+    || (state.pendingClaim !== null && state.pendingClaim.canGang)
+    || gangOptions.length > 0
+  );
   nodes.passButton.disabled = state.pendingHu === null
     && state.pendingClaim === null
     && state.pendingPostWinGang === null;
@@ -2408,7 +2415,10 @@ function roundStatusText() {
     if (state.pendingHu.type === "robGang") {
       return `${state.ruleset.name}：${PLAYER_NAMES[state.pendingHu.discarderIndex]}补杠${tileLabel(state.pendingHu.tile)}，可抢杠胡或过`;
     }
-    return `${state.ruleset.name}：${PLAYER_NAMES[state.pendingHu.discarderIndex]}打出${tileLabel(state.pendingHu.tile)}，可胡或过`;
+    const actions = ["胡", state.pendingHu.canPeng ? "碰" : null, state.pendingHu.canGang ? "杠" : null]
+      .filter((action) => action !== null)
+      .join("/");
+    return `${state.ruleset.name}：${PLAYER_NAMES[state.pendingHu.discarderIndex]}打出${tileLabel(state.pendingHu.tile)}，可${actions}或过`;
   }
   if (state.pendingClaim !== null) {
     const actions = [state.pendingClaim.canPeng ? "碰" : null, state.pendingClaim.canGang ? "杠" : null]
@@ -2941,6 +2951,22 @@ function discardWinContext(discardContext) {
   return window.mahjongAI.winContextAfterDiscard(discardContext);
 }
 
+function discardMeldOptions(playerIndex, tile) {
+  const ruleset = currentRuleset();
+  if (!canUseExposedMeld(playerIndex, tile)) {
+    return { canPeng: false, canGang: false };
+  }
+  const tileCount = countHandTile(playerIndex, tile);
+  return {
+    canPeng: ruleset.gameplay.allowPeng
+      && tileCount >= 2
+      && canClaimPeng(playerIndex, tile),
+    canGang: ruleset.gameplay.allowGang
+      && tileCount >= 3
+      && (playerIndex === 0 || canBotClaimDiscardGang(playerIndex, tile))
+  };
+}
+
 async function resolveDiscardActions(discarderIndex, tile, discardContext) {
   const ruleset = currentRuleset();
   const gangEventIds = discardContext === "gangShangHua"
@@ -2965,6 +2991,9 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
       const winContext = discardWinContext(discardContext);
       const botWinnerIndices = candidates.filter((candidate) => candidate !== 0);
       if (candidates.includes(0) && !forceWin && !shouldAutoplaySelfAfterWin()) {
+        const meldOptions = botWinnerIndices.length === 0
+          ? discardMeldOptions(0, tile)
+          : { canPeng: false, canGang: false };
         state.pendingHu = {
           type: "discard",
           discarderIndex,
@@ -2972,9 +3001,13 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
           winningHand: [...state.hands[0], tile],
           botWinnerIndices,
           winContext,
-          gangEventIds
+          gangEventIds,
+          ...meldOptions
         };
-        logMessage(`${PLAYER_NAMES[discarderIndex]}打出${tileLabel(tile)}，你可以胡牌或选择过，15 秒后自动过。`);
+        const actions = ["胡", meldOptions.canPeng ? "碰" : null, meldOptions.canGang ? "杠" : null]
+          .filter((action) => action !== null)
+          .join("/");
+        logMessage(`${PLAYER_NAMES[discarderIndex]}打出${tileLabel(tile)}，你可以${actions}或选择过，15 秒后自动过。`);
         render();
         startPlayerResponseTimer(state.pendingHu);
         return true;
@@ -2997,34 +3030,28 @@ async function resolveDiscardActions(discarderIndex, tile, discardContext) {
     }
   }
   state.pendingGangEventIds[discarderIndex] = [];
-  return resolveMeldClaims(discarderIndex, tile);
+  return resolveMeldClaims(discarderIndex, tile, []);
 }
 
-async function resolveMeldClaims(discarderIndex, tile) {
+async function resolveMeldClaims(discarderIndex, tile, excludedPlayerIndices) {
   const ruleset = currentRuleset();
+  if (!Array.isArray(excludedPlayerIndices)) {
+    throw new Error("excludedPlayerIndices must be an array");
+  }
   if (!ruleset.gameplay.allowPeng && !ruleset.gameplay.allowGang) {
     return false;
   }
   const claimantIndex = playersAfter(discarderIndex).find((playerIndex) => {
-    if (!canUseExposedMeld(playerIndex, tile)) {
+    if (excludedPlayerIndices.includes(playerIndex)) {
       return false;
     }
-    const tileCount = countHandTile(playerIndex, tile);
-    const canGang = ruleset.gameplay.allowGang
-      && tileCount >= 3
-      && (playerIndex === 0 || canBotClaimDiscardGang(playerIndex, tile));
-    const canPeng = ruleset.gameplay.allowPeng && tileCount >= 2 && canClaimPeng(playerIndex, tile);
-    return canGang || canPeng;
+    const options = discardMeldOptions(playerIndex, tile);
+    return options.canGang || options.canPeng;
   });
   if (claimantIndex === undefined) {
     return false;
   }
-  const canGang = ruleset.gameplay.allowGang
-    && countHandTile(claimantIndex, tile) >= 3
-    && (claimantIndex === 0 || canBotClaimDiscardGang(claimantIndex, tile));
-  const canPeng = ruleset.gameplay.allowPeng
-    && countHandTile(claimantIndex, tile) >= 2
-    && canClaimPeng(claimantIndex, tile);
+  const { canPeng, canGang } = discardMeldOptions(claimantIndex, tile);
   if (claimantIndex === 0) {
     if (shouldAutoplaySelfAfterWin() && !canGang) {
       await executePeng(0, discarderIndex, tile);
@@ -3580,6 +3607,17 @@ async function claimHu() {
 }
 
 async function claimPeng() {
+  if (state.pendingHu !== null && state.pendingHu.type === "discard" && state.pendingHu.canPeng) {
+    const pendingHu = state.pendingHu;
+    if (pendingHu.botWinnerIndices.length > 0) {
+      throw new Error("其他玩家可胡时不能碰牌");
+    }
+    clearPlayerResponseTimer();
+    state.pendingHu = null;
+    state.pendingGangEventIds[pendingHu.discarderIndex] = [];
+    await executePeng(0, pendingHu.discarderIndex, pendingHu.tile);
+    return;
+  }
   if (state.pendingClaim === null || !state.pendingClaim.canPeng) {
     throw new Error("当前不能碰牌");
   }
@@ -3589,6 +3627,17 @@ async function claimPeng() {
 }
 
 async function claimGang() {
+  if (state.pendingHu !== null && state.pendingHu.type === "discard" && state.pendingHu.canGang) {
+    const pendingHu = state.pendingHu;
+    if (pendingHu.botWinnerIndices.length > 0) {
+      throw new Error("其他玩家可胡时不能杠牌");
+    }
+    clearPlayerResponseTimer();
+    state.pendingHu = null;
+    state.pendingGangEventIds[pendingHu.discarderIndex] = [];
+    await executeDiscardGang(0, pendingHu.discarderIndex, pendingHu.tile);
+    return;
+  }
   if (state.pendingClaim !== null) {
     if (!state.pendingClaim.canGang) {
       throw new Error("当前不能杠牌");
@@ -3671,7 +3720,7 @@ async function passAction(automatic = false) {
       return;
     }
     state.pendingGangEventIds[pendingHu.discarderIndex] = [];
-    const turnCaptured = await resolveMeldClaims(pendingHu.discarderIndex, pendingHu.tile);
+    const turnCaptured = await resolveMeldClaims(pendingHu.discarderIndex, pendingHu.tile, [0]);
     if (!state.roundOver && !turnCaptured) {
       await advanceFrom(pendingHu.discarderIndex);
     }

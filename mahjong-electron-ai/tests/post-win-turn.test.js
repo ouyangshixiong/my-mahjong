@@ -54,8 +54,10 @@ test("bot draw flow checks hu before considering a gang", () => {
 });
 
 test("bot gang claims must preserve existing waits", () => {
+  const meldOptionsSource = functionSource("discardMeldOptions", "resolveDiscardActions");
   const meldClaimSource = functionSource("resolveMeldClaims", "executePeng");
 
   assert.match(renderer, /window\.mahjongAI\.waitPreservingSelfGangOptions/);
-  assert.match(meldClaimSource, /canBotClaimDiscardGang/);
+  assert.match(meldOptionsSource, /canBotClaimDiscardGang/);
+  assert.match(meldClaimSource, /discardMeldOptions/);
 });
