@@ -1,0 +1,8 @@
+{
+  "id": "sample-splash",
+  "enabled": true,
+  "imageUrl": "/assets/splash-ad.svg",
+  "clickUrl": "https://github.com/ouyangshixiong/my-mahjong",
+  "durationMs": 3000,
+  "altText": "开发者推荐"
+}

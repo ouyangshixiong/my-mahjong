@@ -2,6 +2,8 @@
 !/.gitignore
 !/mahjong-electron-ai/
 !/mahjong-electron-ai/**
+!/mahjong-android-ai/
+!/mahjong-android-ai/**
 
 /mahjong-electron-ai/node_modules
 /mahjong-electron-ai/node_modules/**
