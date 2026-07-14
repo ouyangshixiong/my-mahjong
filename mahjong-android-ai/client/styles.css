@@ -1426,7 +1426,7 @@ button.self-player-card {
 }
 
 .center-panel {
-  top: 46%;
+  top: 52%;
   left: 50%;
   display: grid;
   place-items: center;
@@ -1707,7 +1707,7 @@ button.self-player-card {
 .discard-field {
   --river-center-offset: 163px;
   position: absolute;
-  top: 46%;
+  top: 52%;
   left: 50%;
   z-index: 6;
   width: 0;
@@ -2358,9 +2358,9 @@ button.self-player-card {
   .table::before { top: 46px; }
   .opponent-top { top: 58px; }
   .wall-segment-top { top: 119px; }
-  .wall-segment-bottom { bottom: 145px; }
-  .center-panel { top: 45%; transform: translate(-50%, -50%) scale(0.88); }
-  .discard-field { top: 45%; transform: scale(0.88); }
+  .wall-segment-bottom { bottom: 110px; }
+  .center-panel { transform: translate(-50%, -50%) scale(0.88); }
+  .discard-field { transform: scale(0.88); }
   .self-area { transform: translateX(-50%) scale(0.92); transform-origin: bottom; }
   .closed-hand.vertical { min-height: 245px; }
   .exchange-animation { top: 42px; }

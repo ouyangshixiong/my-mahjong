@@ -78,6 +78,18 @@ test("discard rivers share the center field and face their owning seats", () => 
   assert.match(css, /\.discard-field \.river-right\s*\{[^}]*rotate\(-90deg\);/s);
 });
 
+test("center compass and discard rivers share the table's visual center", () => {
+  const css = fs.readFileSync(path.join(__dirname, "../client/styles.css"), "utf8");
+  const compactLayoutStart = css.indexOf("@media (max-height: 760px)");
+  const compactLayoutEnd = css.indexOf("@media (max-width: 1160px)", compactLayoutStart);
+  const compactLayout = css.slice(compactLayoutStart, compactLayoutEnd);
+
+  assert.match(css, /\.center-panel\s*\{[^}]*top:\s*52%;/s);
+  assert.match(css, /\.discard-field\s*\{[^}]*--river-center-offset:\s*163px;[^}]*top:\s*52%;/s);
+  assert.match(compactLayout, /\.wall-segment-bottom\s*\{\s*bottom:\s*110px;\s*\}/);
+  assert.doesNotMatch(compactLayout, /\.(?:center-panel|discard-field)\s*\{[^}]*top:/s);
+});
+
 test("turn order rejects invalid seat data", () => {
   assert.throws(() => turnOrderFrom(-1), /playerIndex/);
   assert.throws(() => seatAfter(0, -1), /turn distance/);
