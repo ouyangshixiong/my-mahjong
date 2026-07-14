@@ -1,0 +1,32 @@
+[Unit]
+Description=Mahjong Android rules and splash-ad service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mahjong
+Group=mahjong
+WorkingDirectory=/opt/mahjong-android-ai
+Environment=PORT=5057
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/node /opt/mahjong-android-ai/server/index.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

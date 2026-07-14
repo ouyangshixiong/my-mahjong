@@ -80,7 +80,7 @@ const PATTERN_TYPES = Object.freeze([
 const TILE_IDS = new Set(TILE_DEFS.map((tile) => tile.id));
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9-]{0,63}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
-const LOCAL_SPLASH_ASSET_PATH = "/assets/splash-ad.svg";
+const LOCAL_SPLASH_ASSET_PATH = "assets/splash-ad.svg";
 
 class ConfigurationError extends Error {
   constructor(message) {
@@ -152,10 +152,7 @@ function assertHttpsUrl(value, fieldPath) {
 }
 
 function assertImageUrl(value, fieldPath) {
-  if (typeof value === "string" && value.startsWith("/")) {
-    if (value !== LOCAL_SPLASH_ASSET_PATH) {
-      fail(`${fieldPath} local path must equal ${LOCAL_SPLASH_ASSET_PATH}`);
-    }
+  if (value === LOCAL_SPLASH_ASSET_PATH) {
     return;
   }
   assertHttpsUrl(value, fieldPath);

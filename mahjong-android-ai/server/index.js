@@ -15,10 +15,14 @@ function parsePort(value) {
 }
 
 const port = parsePort(process.env.PORT);
+const host = process.env.HOST;
+if (typeof host !== "string" || host.length === 0) {
+  throw new Error("HOST is required");
+}
 const configDir = path.join(__dirname, "config");
 const publicDir = path.join(__dirname, "public");
 const server = createServer(configDir, publicDir);
 
-server.listen(port, "0.0.0.0", () => {
-  process.stdout.write(`mahjong server listening on port ${port}\n`);
+server.listen(port, host, () => {
+  process.stdout.write(`mahjong server listening on ${host}:${port}\n`);
 });

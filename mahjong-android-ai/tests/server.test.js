@@ -56,7 +56,7 @@ test("checked-in bootstrap configuration is complete and valid", async () => {
   assert.deepEqual(bootstrap.splashAd, {
     id: "sample-splash",
     enabled: true,
-    imageUrl: "/assets/splash-ad.svg",
+    imageUrl: "assets/splash-ad.svg",
     clickUrl: "https://github.com/ouyangshixiong/my-mahjong",
     durationMs: 3000,
     altText: "开发者推荐"
@@ -90,7 +90,7 @@ test("validators reject unknown fields, unsafe ads, and unavailable defaults", a
     () => validateSplashAd({
       id: "disabled-ad",
       enabled: false,
-      imageUrl: "/assets/splash-ad.svg",
+      imageUrl: "assets/splash-ad.svg",
       clickUrl: null,
       durationMs: 0,
       altText: ""
@@ -115,9 +115,9 @@ test("validators reject unknown fields, unsafe ads, and unavailable defaults", a
   assert.throws(
     () => validateSplashAd({
       ...bootstrap.splashAd,
-      imageUrl: "/assets/not-served.svg"
+      imageUrl: "assets/not-served.svg"
     }),
-    /local path must equal \/assets\/splash-ad\.svg/
+    /valid HTTPS URL/
   );
 
   const unsupportedChi = structuredClone(bootstrap.rules);

@@ -22,7 +22,7 @@
 服务端要求显式设置端口：
 
 ```bash
-PORT=5057 npm run server:start
+HOST=127.0.0.1 PORT=5057 npm run server:start
 ```
 
 接口：
@@ -57,10 +57,11 @@ OPTIONS /api/v1/bootstrap
 ```bash
 npm install
 npm test
+export MAHJONG_SERVICE_URL='https://watermark.mmgss.com/mahjong/'
 npm run android:debug
 ```
 
-调试 APK 的服务地址固定为 Android 模拟器访问宿主机所用的 `http://10.0.2.2:5057`。先在宿主机启动上述服务，再安装：
+调试 APK 必须显式写入服务地址，不提供默认地址。当前已部署的地址为 `https://watermark.mmgss.com/mahjong/`；公网服务必须使用 HTTPS，HTTP 仅限本机开发地址。先启动服务，再安装：
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
@@ -87,7 +88,7 @@ keytool -genkeypair -v \
 然后构建正式 APK：
 
 ```bash
-export MAHJONG_SERVICE_URL='https://你的麻将服务域名'
+export MAHJONG_SERVICE_URL='https://watermark.mmgss.com/mahjong/'
 export MAHJONG_KEYSTORE="$PWD/release/mahjong-ai.jks"
 export MAHJONG_KEYSTORE_PASSWORD='你的签名库密码'
 export MAHJONG_KEY_ALIAS='mahjong-ai'
@@ -99,7 +100,9 @@ npm run android:release
 
 ## 网页下载分发
 
-把 `dist/index.html` 和正式签名后的 `dist/mahjong-ai-1.0.0.apk` 上传到同一个 HTTPS 目录。服务器应为 APK 返回：
+把 `dist/index.html` 和正式签名后的 `dist/mahjong-ai-1.0.0.apk` 上传到 `https://watermark.mmgss.com/mahjong/` 对应的 HTTPS 目录。服务器应为 APK 返回：
+
+当前测试下载页：<https://watermark.mmgss.com/mahjong/>
 
 ```text
 Content-Type: application/vnd.android.package-archive

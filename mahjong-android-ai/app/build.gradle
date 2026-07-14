@@ -5,6 +5,9 @@ plugins {
 def releaseRequested = gradle.startParameter.taskNames.any { taskName ->
     taskName.toLowerCase().contains("release")
 }
+def debugRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains("debug")
+}
 
 android {
     namespace "com.beimi.mahjongai"
@@ -21,7 +24,19 @@ android {
     buildTypes {
         debug {
             debuggable false
-            resValue "string", "service_url", "http://10.0.2.2:5057"
+            if (debugRequested) {
+                def serviceUrl = System.getenv("MAHJONG_SERVICE_URL")
+                if (serviceUrl == null || serviceUrl.length() == 0) {
+                    throw new GradleException("MAHJONG_SERVICE_URL is required for debug builds")
+                }
+                def parsedServiceUrl = new java.net.URI(serviceUrl)
+                if (!["http", "https"].contains(parsedServiceUrl.scheme) || parsedServiceUrl.host == null
+                    || parsedServiceUrl.userInfo != null || parsedServiceUrl.query != null
+                    || parsedServiceUrl.fragment != null) {
+                    throw new GradleException("debug MAHJONG_SERVICE_URL must be a credential-free HTTP or HTTPS URL without query or fragment")
+                }
+                resValue "string", "service_url", serviceUrl.replace("%", "%%")
+            }
             manifestPlaceholders = [usesCleartextTraffic: "true"]
         }
         release {
