@@ -1972,7 +1972,11 @@ button.self-player-card {
 }
 
 .opponent-right .melds {
-  right: 66px;
+  right: 105px;
+  bottom: -104px;
+  width: 360px;
+  flex-wrap: wrap;
+  align-content: flex-end;
   justify-content: flex-end;
 }
 
@@ -2254,8 +2258,16 @@ button.self-player-card {
   .discard-field { top: 45%; transform: scale(0.88); }
   .self-area { transform: translateX(-50%) scale(0.92); transform-origin: bottom; }
   .closed-hand.vertical { min-height: 245px; }
+  .opponent-right .melds { bottom: -60px; }
   .exchange-animation { top: 42px; }
   .exchange-announcement { transform: scale(0.9); }
+}
+
+@media (max-width: 1500px) {
+  .opponent-right .melds {
+    right: 10px;
+    width: 230px;
+  }
 }
 
 @media (max-width: 1160px) {
@@ -2263,6 +2275,10 @@ button.self-player-card {
   .hud-room { display: none; }
   .opponent-left { left: 12px; }
   .opponent-right { right: 12px; }
+  .opponent-right .melds {
+    right: 0;
+    width: 210px;
+  }
   .won-tiles-left { width: 96px; }
   .won-tiles-right { width: 96px; }
   .won-tiles-left.won-tiles-wrapped { left: 228px; }
