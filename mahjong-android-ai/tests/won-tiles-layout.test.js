@@ -55,6 +55,13 @@ test("winning tile trays wrap toward the table center", () => {
   assert.match(renderer, /playerIndex === 2 \? line \+ 1 : layout\.rows - line/);
 });
 
+test("side winning tiles share the corresponding hand perspective", () => {
+  assert.match(css, /\.won-tiles-left\s*\{[^}]*rotateZ\(6deg\) rotateY\(9deg\)/s);
+  assert.match(css, /\.won-tiles-right\s*\{[^}]*rotateZ\(-6deg\) rotateY\(-9deg\)/s);
+  assert.match(css, /\.won-tiles-right \.won-tile\s*\{[^}]*rotate\(-90deg\)/s);
+  assert.match(css, /\.won-tiles-right \.won-tile::after\s*\{[^}]*rotate\(90deg\)/s);
+});
+
 test("grid calculation fits normal, wrapped, and 56-tile stress layouts", () => {
   const calculateWonTileGrid = loadCalculateWonTileGrid();
 

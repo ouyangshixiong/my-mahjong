@@ -5,6 +5,13 @@ const path = require("node:path");
 
 const css = fs.readFileSync(path.join(__dirname, "../client/styles.css"), "utf8");
 
+test("top opponent melds stay to the left of the concealed hand", () => {
+  assert.match(
+    css,
+    /\.opponent-top \.melds\s*\{[^}]*top:\s*0;[^}]*right:\s*calc\(100% \+ 12px\);[^}]*width:\s*250px;[^}]*justify-content:\s*flex-start;/s
+  );
+});
+
 test("right opponent melds dock below the hand without overflowing toward the self hand", () => {
   assert.match(
     css,

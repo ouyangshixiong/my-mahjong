@@ -1935,6 +1935,20 @@ function createWallTile() {
   return element;
 }
 
+function createWallStack(tileCount) {
+  if (!Number.isInteger(tileCount) || tileCount < 1 || tileCount > 2) {
+    throw new Error(`牌墙每墩张数非法：${tileCount}`);
+  }
+  const stack = document.createElement("div");
+  stack.className = "wall-stack";
+  for (let tileIndex = 0; tileIndex < tileCount; tileIndex += 1) {
+    const tile = createWallTile();
+    tile.classList.add(tileIndex === 1 ? "wall-tile-front" : "wall-tile-back");
+    stack.append(tile);
+  }
+  return stack;
+}
+
 function createRiverTile(tile, index, tileCount) {
   const element = createTile(tile, "small", null);
   element.classList.add("river-tile");
@@ -2107,7 +2121,10 @@ function renderWall() {
   for (let playerIndex = 0; playerIndex < 4; playerIndex += 1) {
     const wallNode = nodes[`player${playerIndex}Wall`];
     wallNode.setAttribute("aria-label", `${PLAYER_NAMES[playerIndex]}前方剩余 ${counts[playerIndex]} 张墙牌`);
-    replaceChildren(wallNode, Array.from({ length: counts[playerIndex] }, createWallTile));
+    const stackCount = Math.ceil(counts[playerIndex] / 2);
+    replaceChildren(wallNode, Array.from({ length: stackCount }, (_value, stackIndex) => (
+      createWallStack(Math.min(2, counts[playerIndex] - stackIndex * 2))
+    )));
   }
 }
 
