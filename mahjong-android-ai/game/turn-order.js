@@ -47,6 +47,44 @@ function turnAnchorAfterMeld(currentAnchorIndex, meldPlayerIndex, meldType) {
   throw new Error(`Unknown meld turn type: ${meldType}`);
 }
 
+function turnAnchorAfterWin(currentAnchorIndex, winnerIndices, winType, actionPlayerIndex) {
+  assertPlayerIndex(currentAnchorIndex);
+  assertPlayerIndex(actionPlayerIndex);
+  if (!Array.isArray(winnerIndices) || winnerIndices.length === 0) {
+    throw new Error("winnerIndices must be a non-empty array");
+  }
+  for (const winnerIndex of winnerIndices) {
+    assertPlayerIndex(winnerIndex);
+  }
+  if (new Set(winnerIndices).size !== winnerIndices.length) {
+    throw new Error("winnerIndices must not contain duplicates");
+  }
+  if (winType === "selfDraw") {
+    if (
+      winnerIndices.length !== 1
+      || winnerIndices[0] !== currentAnchorIndex
+      || actionPlayerIndex !== currentAnchorIndex
+    ) {
+      throw new Error("self draw must belong to the current turn player");
+    }
+    return currentAnchorIndex;
+  }
+  if (winType === "discard") {
+    if (actionPlayerIndex !== currentAnchorIndex) {
+      throw new Error("discard win source must be the current turn player");
+    }
+    const winnerSet = new Set(winnerIndices);
+    const anchorIndex = turnOrderFrom(actionPlayerIndex)
+      .slice(1)
+      .find((playerIndex) => winnerSet.has(playerIndex));
+    if (anchorIndex === undefined) {
+      throw new Error("discard win has no winner after its source player");
+    }
+    return anchorIndex;
+  }
+  throw new Error(`Unknown win turn type: ${winType}`);
+}
+
 function turnIndicatorFor(playerIndex) {
   if (playerIndex === null) {
     return null;
@@ -67,6 +105,7 @@ module.exports = {
   TURN_ORDER,
   seatAfter,
   turnAnchorAfterMeld,
+  turnAnchorAfterWin,
   turnIndicatorFor,
   turnOrderFrom
 };

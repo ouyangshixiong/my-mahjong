@@ -461,6 +461,26 @@ function applyMeldToTurnSequence(playerIndex, meldType, expectedAnchorIndex) {
   );
 }
 
+function applyWinToTurnSequence(winnerIndices, settlement) {
+  if (state.turnSequenceAnchorIndex === null) {
+    throw new Error("胡牌发生时缺少当前牌序");
+  }
+  let actionPlayerIndex;
+  if (settlement.type === "selfDraw") {
+    actionPlayerIndex = winnerIndices[0];
+  } else if (settlement.type === "discard") {
+    actionPlayerIndex = settlement.payerIndex;
+  } else {
+    throw new Error(`未知胡牌牌序类型：${settlement.type}`);
+  }
+  state.turnSequenceAnchorIndex = window.mahjongAI.turnAnchorAfterWin(
+    state.turnSequenceAnchorIndex,
+    winnerIndices,
+    settlement.type,
+    actionPlayerIndex
+  );
+}
+
 async function advanceTurnSequence() {
   if (state.turnSequenceAnchorIndex === null) {
     throw new Error("继续摸牌时缺少牌序锚点");
@@ -2988,7 +3008,13 @@ async function advanceFrom(previousPlayerIndex) {
     if (turnCaptured) {
       return;
     }
-    previous = playerIndex;
+    if (state.roundOver) {
+      return;
+    }
+    if (state.turnSequenceAnchorIndex === null) {
+      throw new Error("机器人出牌结算后缺少续摸牌序锚点");
+    }
+    previous = state.turnSequenceAnchorIndex;
   }
 }
 
@@ -3878,6 +3904,7 @@ async function registerWins(entries, settlement) {
     return { ...entry, score };
   });
 
+  applyWinToTurnSequence(playerIndices, settlement);
   state.turnPlayerIndex = null;
   state.awaitingPlayerDiscard = false;
   state.selfDrawEligible = false;

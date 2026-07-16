@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const { URL } = require("node:url");
 const {
   turnAnchorAfterMeld: getTurnAnchorAfterMeld,
+  turnAnchorAfterWin: getTurnAnchorAfterWin,
   turnIndicatorFor: getTurnIndicatorFor,
   turnOrderFrom: getTurnOrderFrom
 } = require("./turn-order");
@@ -93,6 +94,9 @@ contextBridge.exposeInMainWorld("mahjongAI", {
   },
   turnAnchorAfterMeld(currentAnchorIndex, meldPlayerIndex, meldType) {
     return getTurnAnchorAfterMeld(currentAnchorIndex, meldPlayerIndex, meldType);
+  },
+  turnAnchorAfterWin(currentAnchorIndex, winnerIndices, winType, actionPlayerIndex) {
+    return getTurnAnchorAfterWin(currentAnchorIndex, winnerIndices, winType, actionPlayerIndex);
   },
   turnIndicatorFor(playerIndex) {
     return getTurnIndicatorFor(playerIndex);

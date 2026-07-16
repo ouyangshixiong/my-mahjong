@@ -6,6 +6,7 @@ const {
   TURN_ORDER,
   seatAfter,
   turnAnchorAfterMeld,
+  turnAnchorAfterWin,
   turnIndicatorFor,
   turnOrderFrom
 } = require("../client/turn-order");
@@ -35,12 +36,30 @@ test("concealed and added gangs preserve the current draw sequence", () => {
   assert.throws(() => turnAnchorAfterMeld(0, 2, "chi"), /Unknown meld turn type/);
 });
 
+test("discard wins continue from the winner while self draws preserve the turn", () => {
+  assert.equal(turnAnchorAfterWin(0, [2], "discard", 0), 2);
+  assert.equal(seatAfter(turnAnchorAfterWin(0, [2], "discard", 0), 1), 1);
+  assert.equal(turnAnchorAfterWin(2, [0], "discard", 2), 0);
+  assert.equal(seatAfter(turnAnchorAfterWin(2, [0], "discard", 2), 1), 3);
+  assert.equal(turnAnchorAfterWin(2, [2], "selfDraw", 2), 2);
+  assert.equal(seatAfter(turnAnchorAfterWin(2, [2], "selfDraw", 2), 1), 1);
+});
+
+test("multi-winner discards use the nearest winner after the discarder", () => {
+  assert.equal(turnAnchorAfterWin(0, [1, 3], "discard", 0), 3);
+  assert.throws(() => turnAnchorAfterWin(0, [0], "discard", 0), /no winner after/);
+  assert.throws(() => turnAnchorAfterWin(0, [3, 3], "discard", 0), /duplicates/);
+  assert.throws(() => turnAnchorAfterWin(0, [3], "selfDraw", 0), /current turn player/);
+});
+
 test("renderer advances from the explicit Sichuan Mahjong sequence anchor", () => {
   const renderer = fs.readFileSync(path.join(__dirname, "../client/renderer.js"), "utf8");
   assert.match(renderer, /turnSequenceAnchorIndex: null/);
   assert.match(renderer, /applyMeldToTurnSequence\(playerIndex, "peng", discarderIndex\)/);
   assert.match(renderer, /applyMeldToTurnSequence\(playerIndex, "discardGang", discarderIndex\)/);
   assert.match(renderer, /matchedOption\.type === "concealed" \? "concealedGang" : "addedGang"/);
+  assert.match(renderer, /applyWinToTurnSequence\(playerIndices, settlement\)/);
+  assert.match(renderer, /previous = state\.turnSequenceAnchorIndex;/);
   assert.match(renderer, /await advanceFrom\(state\.turnSequenceAnchorIndex\)/);
 });
 
@@ -109,6 +128,7 @@ test("turn order rejects invalid seat data", () => {
   assert.throws(() => turnOrderFrom(-1), /playerIndex/);
   assert.throws(() => seatAfter(0, -1), /turn distance/);
   assert.throws(() => turnAnchorAfterMeld(null, 0, "peng"), /playerIndex/);
+  assert.throws(() => turnAnchorAfterWin(0, [], "discard", 0), /non-empty array/);
   assert.throws(() => turnIndicatorFor(4), /playerIndex/);
   assert.throws(() => turnIndicatorFor(undefined), /playerIndex/);
 });

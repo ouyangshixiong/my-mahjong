@@ -9,7 +9,12 @@ const {
 } = require("../game/mahjong");
 const { arrangeHandForDrawPreview } = require("../game/hand-layout");
 const { decidePostWinDraw } = require("../game/post-win-turn");
-const { turnAnchorAfterMeld, turnIndicatorFor, turnOrderFrom } = require("../game/turn-order");
+const {
+  turnAnchorAfterMeld,
+  turnAnchorAfterWin,
+  turnIndicatorFor,
+  turnOrderFrom
+} = require("../game/turn-order");
 const {
   announcementPatternsForWin,
   declaredGangPatternForWin,
@@ -225,6 +230,7 @@ window.mahjongAI = Object.freeze({
   },
   turnOrderFrom,
   turnAnchorAfterMeld,
+  turnAnchorAfterWin,
   turnIndicatorFor,
   arrangeHandForDrawPreview,
   decidePostWinDraw,
