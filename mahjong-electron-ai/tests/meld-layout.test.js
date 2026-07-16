@@ -23,16 +23,20 @@ test("side opponent melds rotate ninety degrees toward their owning seats", () =
   );
 });
 
-test("side opponent melds stack vertically and wrap after three groups", () => {
+test("side opponent melds move to the lower outer slots and fill two columns from the bottom", () => {
   assert.match(
     css,
-    /\.opponent-left \.melds,\s*\.opponent-right \.melds\s*\{[^}]*width:\s*116px;[^}]*height:\s*352px;[^}]*flex-flow:\s*column wrap;/s
+    /\.opponent-left \.melds,\s*\.opponent-right \.melds\s*\{[^}]*bottom:\s*-104px;[^}]*width:\s*133px;[^}]*height:\s*232px;[^}]*flex-wrap:\s*wrap-reverse;[^}]*row-gap:\s*8px;[^}]*column-gap:\s*25px;[^}]*justify-content:\s*flex-start;[^}]*align-content:\s*flex-start;/s
   );
   assert.match(
     css,
-    /\.opponent-right \.melds\s*\{[^}]*right:\s*105px;[^}]*bottom:\s*-104px;[^}]*align-content:\s*flex-end;/s
+    /\.opponent-left \.melds\s*\{[^}]*left:\s*74px;[^}]*flex-direction:\s*row;/s
   );
-  assert.match(css, /@media \(max-height:\s*760px\)[\s\S]*?\.opponent-right \.melds\s*\{\s*bottom:\s*-60px;\s*\}/);
-  assert.match(css, /@media \(max-width:\s*1500px\)[\s\S]*?\.opponent-right \.melds\s*\{[^}]*right:\s*10px;/s);
+  assert.match(
+    css,
+    /\.opponent-right \.melds\s*\{[^}]*right:\s*105px;[^}]*flex-direction:\s*row-reverse;/s
+  );
+  assert.match(css, /@media \(max-height:\s*760px\)[\s\S]*?\.opponent-left \.melds,\s*\.opponent-right \.melds\s*\{\s*bottom:\s*-60px;\s*\}/);
+  assert.match(css, /@media \(max-width:\s*1500px\)[\s\S]*?\.opponent-right \.melds\s*\{[^}]*right:\s*63px;/s);
   assert.match(css, /@media \(max-width:\s*1160px\)[\s\S]*?\.opponent-right \.melds\s*\{[^}]*right:\s*0;/s);
 });
