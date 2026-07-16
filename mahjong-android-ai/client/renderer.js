@@ -130,6 +130,7 @@ const state = {
   visibleWonTiles: [],
   turnDrawnTiles: [null, null, null, null],
   turnPlayerIndex: null,
+  turnSequenceAnchorIndex: null,
   lackSuits: [null, null, null, null],
   lackSuitsRevealed: false,
   awaitingExchange: false,
@@ -438,6 +439,33 @@ function sortTiles(tiles) {
 
 function turnOrderFrom(playerIndex) {
   return window.mahjongAI.turnOrderFrom(playerIndex);
+}
+
+function beginTurnSequence(playerIndex) {
+  assertPlayerIndexLocal(playerIndex);
+  state.turnSequenceAnchorIndex = playerIndex;
+}
+
+function applyMeldToTurnSequence(playerIndex, meldType, expectedAnchorIndex) {
+  if (state.turnSequenceAnchorIndex === null) {
+    throw new Error(`${meldType}发生时缺少当前牌序`);
+  }
+  assertPlayerIndexLocal(expectedAnchorIndex);
+  if (state.turnSequenceAnchorIndex !== expectedAnchorIndex) {
+    throw new Error(`${meldType}发生时当前牌序与操作来源不一致`);
+  }
+  state.turnSequenceAnchorIndex = window.mahjongAI.turnAnchorAfterMeld(
+    state.turnSequenceAnchorIndex,
+    playerIndex,
+    meldType
+  );
+}
+
+async function advanceTurnSequence() {
+  if (state.turnSequenceAnchorIndex === null) {
+    throw new Error("继续摸牌时缺少牌序锚点");
+  }
+  await advanceFrom(state.turnSequenceAnchorIndex);
 }
 
 function drawTile(playerIndex) {
@@ -893,7 +921,7 @@ function canClaimPeng(playerIndex, tile) {
   return canUseExposedMeld(playerIndex, tile);
 }
 
-function selfGangOptions(playerIndex) {
+function candidateSelfGangOptions(playerIndex) {
   const ruleset = currentRuleset();
   if (!ruleset.gameplay.allowGang || !isPlayerActive(playerIndex)) {
     return [];
@@ -928,27 +956,22 @@ function selfGangOptions(playerIndex) {
   });
 }
 
-function waitPreservingBotSelfGangOptions(playerIndex, drawnTile) {
-  if (playerIndex === 0) {
-    throw new Error("真人玩家的杠选项不能交给 AI 自动筛选");
-  }
+function selfGangOptions(playerIndex) {
+  const drawnTile = state.turnDrawnTiles[playerIndex];
   if (!TILE_IDS.includes(drawnTile)) {
-    throw new Error(`${PLAYER_NAMES[playerIndex]}的 AI 杠牌筛选缺少有效摸牌`);
+    throw new Error(`${PLAYER_NAMES[playerIndex]}的杠牌筛选缺少有效摸牌`);
   }
   const ruleset = currentRuleset();
   return window.mahjongAI.waitPreservingSelfGangOptions(
     state.hands[playerIndex],
     drawnTile,
-    selfGangOptions(playerIndex),
+    candidateSelfGangOptions(playerIndex),
     ruleset,
     state.lackSuits[playerIndex]
   );
 }
 
-function canBotClaimDiscardGang(playerIndex, tile) {
-  if (playerIndex === 0) {
-    throw new Error("真人玩家的直杠不能交给 AI 自动判断");
-  }
+function canClaimDiscardGang(playerIndex, tile) {
   const ruleset = currentRuleset();
   return window.mahjongAI.discardGangPreservesWaits(
     state.hands[playerIndex],
@@ -2169,6 +2192,12 @@ function createMeld(meld, playerIndex, meldIndex) {
     slots[claimedSlotIndex].append(stackedTile);
   }
   element.append(...slots);
+  if (playerIndex === 1 || playerIndex === 3) {
+    const orientation = document.createElement("div");
+    orientation.className = `side-meld side-meld-${playerIndex === 1 ? "left" : "right"}`;
+    orientation.append(element);
+    return orientation;
+  }
   return element;
 }
 
@@ -2590,6 +2619,7 @@ async function startRound() {
   state.visibleWonTiles = [];
   state.turnDrawnTiles = [null, null, null, null];
   state.turnPlayerIndex = null;
+  state.turnSequenceAnchorIndex = null;
   state.lackSuits = [null, null, null, null];
   state.lackSuitsRevealed = false;
   state.awaitingExchange = false;
@@ -2692,6 +2722,7 @@ async function beginPlayPhase() {
     }
     recordTurnDrawnTile(0, drawn);
   }
+  beginTurnSequence(0);
   state.turnPlayerIndex = 0;
   state.awaitingPlayerDiscard = true;
   state.selfDrawEligible = true;
@@ -2836,7 +2867,7 @@ async function discardSelf(tile) {
   await playTileSound(0, tile);
   const turnCaptured = await resolveDiscardActions(0, tile, discardContext);
   if (!state.roundOver && !turnCaptured) {
-    await advanceFrom(0);
+    await advanceTurnSequence();
   }
 }
 
@@ -2850,6 +2881,7 @@ async function advanceFrom(previousPlayerIndex) {
       return;
     }
 
+    beginTurnSequence(playerIndex);
     const drawn = drawTile(playerIndex);
     if (drawn === null) {
       await finishDrawRound();
@@ -2907,7 +2939,7 @@ async function advanceFrom(previousPlayerIndex) {
       continue;
     }
 
-    const gangOptions = waitPreservingBotSelfGangOptions(playerIndex, drawn);
+    const gangOptions = selfGangOptions(playerIndex);
     if (gangOptions.length > 0) {
       await executeSelfGang(playerIndex, gangOptions[0]);
       return;
@@ -2990,7 +3022,7 @@ function discardMeldOptions(playerIndex, tile) {
       && canClaimPeng(playerIndex, tile),
     canGang: ruleset.gameplay.allowGang
       && tileCount >= 3
-      && (playerIndex === 0 || canBotClaimDiscardGang(playerIndex, tile))
+      && canClaimDiscardGang(playerIndex, tile)
   };
 }
 
@@ -3106,6 +3138,7 @@ async function executePeng(playerIndex, discarderIndex, tile) {
   if (!ruleset.gameplay.allowPeng || !canClaimPeng(playerIndex, tile) || countHandTile(playerIndex, tile) < 2) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}不能碰${tileLabel(tile)}`);
   }
+  applyMeldToTurnSequence(playerIndex, "peng", discarderIndex);
   state.turnPlayerIndex = playerIndex;
   state.hands[playerIndex] = removeOne(removeOne(state.hands[playerIndex], tile), tile);
   removeLastDiscard(discarderIndex, tile);
@@ -3144,9 +3177,15 @@ async function executePeng(playerIndex, discarderIndex, tile) {
 
 async function executeDiscardGang(playerIndex, discarderIndex, tile) {
   const ruleset = currentRuleset();
-  if (!ruleset.gameplay.allowGang || !canUseExposedMeld(playerIndex, tile) || countHandTile(playerIndex, tile) < 3) {
+  if (
+    !ruleset.gameplay.allowGang
+    || !canUseExposedMeld(playerIndex, tile)
+    || countHandTile(playerIndex, tile) < 3
+    || !canClaimDiscardGang(playerIndex, tile)
+  ) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}不能杠${tileLabel(tile)}`);
   }
+  applyMeldToTurnSequence(playerIndex, "discardGang", discarderIndex);
   state.turnPlayerIndex = playerIndex;
   state.hands[playerIndex] = removeTilesLocal(state.hands[playerIndex], [tile, tile, tile]);
   removeLastDiscard(discarderIndex, tile);
@@ -3208,6 +3247,11 @@ async function executeSelfGang(playerIndex, option) {
   if (matchedOption === undefined) {
     throw new Error(`${PLAYER_NAMES[playerIndex]}当前不能${gangOptionLabel(option)}`);
   }
+  applyMeldToTurnSequence(
+    playerIndex,
+    matchedOption.type === "concealed" ? "concealedGang" : "addedGang",
+    playerIndex
+  );
   state.turnPlayerIndex = playerIndex;
   if (matchedOption.type === "added" && currentRuleset().gameplay.allowRobGang) {
     const robbed = await resolveRobGang(playerIndex, matchedOption);
@@ -3267,7 +3311,7 @@ async function resolveRobGang(gangPlayerIndex, option) {
     winningTile: option.tile
   });
   if (!state.roundOver) {
-    await advanceFrom(gangPlayerIndex);
+    await advanceTurnSequence();
   }
   return true;
 }
@@ -3340,7 +3384,7 @@ async function continueAfterGang(playerIndex) {
       winContext: "gangShangHua"
     }], { type: "selfDraw", payerIndex: null });
     if (!state.roundOver) {
-      await advanceFrom(playerIndex);
+      await advanceTurnSequence();
     }
     return;
   }
@@ -3367,7 +3411,7 @@ async function continueAfterGang(playerIndex) {
     await performBotDiscard(playerIndex, true, drawn);
     return;
   }
-  const gangOptions = waitPreservingBotSelfGangOptions(playerIndex, drawn);
+  const gangOptions = selfGangOptions(playerIndex);
   if (gangOptions.length > 0) {
     await executeSelfGang(playerIndex, gangOptions[0]);
     return;
@@ -3432,7 +3476,7 @@ async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
       winContext: state.turnWinContexts[playerIndex]
     }], { type: "selfDraw", payerIndex: null });
     if (!state.roundOver) {
-      await advanceFrom(playerIndex);
+      await advanceTurnSequence();
     }
     return;
   }
@@ -3455,7 +3499,7 @@ async function performBotDiscard(playerIndex, allowHu, drawnTile = null) {
   await playTileSound(playerIndex, discard);
   const turnCaptured = await resolveDiscardActions(playerIndex, discard, discardContext);
   if (!state.roundOver && !turnCaptured) {
-    await advanceFrom(playerIndex);
+    await advanceTurnSequence();
   }
 }
 
@@ -3569,7 +3613,7 @@ async function claimHu() {
       winningTile: pendingHu.tile
     });
     if (!state.roundOver) {
-      await advanceFrom(pendingHu.discarderIndex);
+      await advanceTurnSequence();
     }
     return;
   }
@@ -3608,7 +3652,7 @@ async function claimHu() {
     });
     renderAdvisor(analysis, null, localScore);
     if (!state.roundOver) {
-      await advanceFrom(0);
+      await advanceTurnSequence();
     }
     return;
   }
@@ -3720,7 +3764,7 @@ async function passAction(automatic = false) {
           winningTile: pendingHu.tile
         });
         if (!state.roundOver) {
-          await advanceFrom(pendingHu.discarderIndex);
+          await advanceTurnSequence();
         }
         return;
       }
@@ -3742,14 +3786,14 @@ async function passAction(automatic = false) {
         winningTile: pendingHu.tile
       });
       if (!state.roundOver) {
-        await advanceFrom(pendingHu.discarderIndex);
+        await advanceTurnSequence();
       }
       return;
     }
     state.pendingGangEventIds[pendingHu.discarderIndex] = [];
     const turnCaptured = await resolveMeldClaims(pendingHu.discarderIndex, pendingHu.tile, [0]);
     if (!state.roundOver && !turnCaptured) {
-      await advanceFrom(pendingHu.discarderIndex);
+      await advanceTurnSequence();
     }
     return;
   }
@@ -3761,7 +3805,7 @@ async function passAction(automatic = false) {
       ? `你操作超时，自动过${tileLabel(claim.tile)}。`
       : `你选择过${tileLabel(claim.tile)}。`);
     render();
-    await advanceFrom(claim.discarderIndex);
+    await advanceTurnSequence();
     return;
   }
   if (state.pendingPostWinGang !== null) {
@@ -4080,6 +4124,7 @@ function endRound(message) {
   state.awaitingExchange = false;
   state.exchangeAnimation = null;
   state.turnPlayerIndex = null;
+  state.turnSequenceAnchorIndex = null;
   state.awaitingPlayerDiscard = false;
   state.pendingHu = null;
   state.pendingClaim = null;

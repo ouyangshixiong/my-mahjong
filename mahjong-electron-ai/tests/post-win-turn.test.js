@@ -45,19 +45,23 @@ test("hand locking depends only on whether the player has won, not on the rulese
   assert.doesNotMatch(renderer, /state\.winCounts\[playerIndex\] > 0 && ruleset\.gameplay\.allowRepeatWins/);
 });
 
-test("bot draw flow checks hu before considering a gang", () => {
+test("bot draw flow checks hu before considering a wait-preserving gang", () => {
   const advanceSource = functionSource("advanceFrom", "nextActivePlayer");
   const afterGangSource = functionSource("continueAfterGang", "continuePostWinSelfTurn");
 
-  assert.ok(advanceSource.indexOf("if (isWinning)") < advanceSource.indexOf("waitPreservingBotSelfGangOptions"));
-  assert.ok(afterGangSource.indexOf("if (isWinning)") < afterGangSource.indexOf("waitPreservingBotSelfGangOptions"));
+  assert.ok(advanceSource.indexOf("if (isWinning)") < advanceSource.indexOf("selfGangOptions"));
+  assert.ok(afterGangSource.indexOf("if (isWinning)") < afterGangSource.indexOf("selfGangOptions"));
 });
 
-test("bot gang claims must preserve existing waits", () => {
+test("human and bot gang choices must preserve existing waits", () => {
+  const selfGangSource = functionSource("selfGangOptions", "canClaimDiscardGang");
   const meldOptionsSource = functionSource("discardMeldOptions", "resolveDiscardActions");
+  const discardGangSource = functionSource("executeDiscardGang", "settleGang");
   const meldClaimSource = functionSource("resolveMeldClaims", "executePeng");
 
-  assert.match(renderer, /window\.mahjongAI\.waitPreservingSelfGangOptions/);
-  assert.match(meldOptionsSource, /canBotClaimDiscardGang/);
+  assert.match(selfGangSource, /window\.mahjongAI\.waitPreservingSelfGangOptions/);
+  assert.match(selfGangSource, /state\.turnDrawnTiles\[playerIndex\]/);
+  assert.match(meldOptionsSource, /canClaimDiscardGang/);
+  assert.match(discardGangSource, /canClaimDiscardGang/);
   assert.match(meldClaimSource, /discardMeldOptions/);
 });

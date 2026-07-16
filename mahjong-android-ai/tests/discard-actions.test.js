@@ -27,7 +27,7 @@ test("a discard that can hu also retains its legal peng option", () => {
     "canUseExposedMeld",
     "countHandTile",
     "canClaimPeng",
-    "canBotClaimDiscardGang",
+    "canClaimDiscardGang",
     `${source}; return discardMeldOptions;`
   )(
     () => ({ gameplay: { allowPeng: true, allowGang: true } }),

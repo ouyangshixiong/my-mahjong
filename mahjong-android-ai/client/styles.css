@@ -2173,6 +2173,28 @@ button.self-player-card {
   transform: none;
 }
 
+.side-meld {
+  position: relative;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 112px;
+}
+
+.side-meld > .meld {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+}
+
+.side-meld-left > .meld {
+  rotate: 90deg;
+}
+
+.side-meld-right > .meld {
+  rotate: -90deg;
+}
+
 .self-melds {
   position: absolute;
   right: 8px;
@@ -2198,22 +2220,26 @@ button.self-player-card {
 .opponent-right .melds {
   position: absolute;
   bottom: 6px;
-  width: 210px;
+  width: 116px;
+  height: 352px;
+  min-height: 0;
   margin: 0;
+  flex-flow: column wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .opponent-left .melds {
   left: 66px;
-  justify-content: flex-start;
+  align-content: flex-start;
+  align-items: flex-start;
 }
 
 .opponent-right .melds {
   right: 105px;
   bottom: -104px;
-  width: 360px;
-  flex-wrap: wrap;
   align-content: flex-end;
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .river {
@@ -2502,7 +2528,6 @@ button.self-player-card {
 @media (max-width: 1500px) {
   .opponent-right .melds {
     right: 10px;
-    width: 230px;
   }
 }
 
@@ -2514,7 +2539,6 @@ button.self-player-card {
   .opponent-right { right: 12px; }
   .opponent-right .melds {
     right: 0;
-    width: 210px;
   }
   .won-tiles-left { width: 96px; }
   .won-tiles-right { width: 96px; }

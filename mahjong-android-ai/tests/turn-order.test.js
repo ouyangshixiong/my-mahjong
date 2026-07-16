@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   TURN_ORDER,
   seatAfter,
+  turnAnchorAfterMeld,
   turnIndicatorFor,
   turnOrderFrom
 } = require("../game/turn-order");
@@ -15,6 +16,32 @@ test("Mahjong turns run counterclockwise from East to South, West, and North", (
   assert.deepEqual(turnOrderFrom(3), [3, 2, 1, 0]);
   assert.equal(seatAfter(0, 1), 3);
   assert.equal(seatAfter(0, 4), 0);
+});
+
+test("peng and discard gang capture the draw sequence for the meld player", () => {
+  assert.equal(turnAnchorAfterMeld(0, 2, "peng"), 2);
+  assert.equal(turnAnchorAfterMeld(0, 2, "discardGang"), 2);
+  assert.equal(seatAfter(turnAnchorAfterMeld(0, 2, "peng"), 1), 1);
+  assert.equal(seatAfter(turnAnchorAfterMeld(0, 2, "discardGang"), 1), 1);
+});
+
+test("concealed and added gangs preserve the current draw sequence", () => {
+  assert.equal(turnAnchorAfterMeld(2, 2, "concealedGang"), 2);
+  assert.equal(turnAnchorAfterMeld(2, 2, "addedGang"), 2);
+  assert.equal(seatAfter(turnAnchorAfterMeld(2, 2, "concealedGang"), 1), 1);
+  assert.equal(seatAfter(turnAnchorAfterMeld(2, 2, "addedGang"), 1), 1);
+  assert.throws(() => turnAnchorAfterMeld(0, 2, "concealedGang"), /current turn player/);
+  assert.throws(() => turnAnchorAfterMeld(0, 2, "addedGang"), /current turn player/);
+  assert.throws(() => turnAnchorAfterMeld(0, 2, "chi"), /Unknown meld turn type/);
+});
+
+test("renderer advances from the explicit Sichuan Mahjong sequence anchor", () => {
+  const renderer = fs.readFileSync(path.join(__dirname, "../client/renderer.js"), "utf8");
+  assert.match(renderer, /turnSequenceAnchorIndex: null/);
+  assert.match(renderer, /applyMeldToTurnSequence\(playerIndex, "peng", discarderIndex\)/);
+  assert.match(renderer, /applyMeldToTurnSequence\(playerIndex, "discardGang", discarderIndex\)/);
+  assert.match(renderer, /matchedOption\.type === "concealed" \? "concealedGang" : "addedGang"/);
+  assert.match(renderer, /await advanceFrom\(state\.turnSequenceAnchorIndex\)/);
 });
 
 test("player circles start empty and are reserved for lack suits", () => {
@@ -93,6 +120,7 @@ test("center compass and discard rivers share the table's visual center", () => 
 test("turn order rejects invalid seat data", () => {
   assert.throws(() => turnOrderFrom(-1), /playerIndex/);
   assert.throws(() => seatAfter(0, -1), /turn distance/);
+  assert.throws(() => turnAnchorAfterMeld(null, 0, "peng"), /playerIndex/);
   assert.throws(() => turnIndicatorFor(4), /playerIndex/);
   assert.throws(() => turnIndicatorFor(undefined), /playerIndex/);
 });

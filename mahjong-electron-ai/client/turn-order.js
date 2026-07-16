@@ -32,6 +32,21 @@ function seatAfter(playerIndex, distance) {
   return turnOrderFrom(playerIndex)[distance % PLAYER_COUNT];
 }
 
+function turnAnchorAfterMeld(currentAnchorIndex, meldPlayerIndex, meldType) {
+  assertPlayerIndex(currentAnchorIndex);
+  assertPlayerIndex(meldPlayerIndex);
+  if (meldType === "peng" || meldType === "discardGang") {
+    return meldPlayerIndex;
+  }
+  if (meldType === "concealedGang" || meldType === "addedGang") {
+    if (meldPlayerIndex !== currentAnchorIndex) {
+      throw new Error(`${meldType} must be declared by the current turn player`);
+    }
+    return currentAnchorIndex;
+  }
+  throw new Error(`Unknown meld turn type: ${meldType}`);
+}
+
 function turnIndicatorFor(playerIndex) {
   if (playerIndex === null) {
     return null;
@@ -51,6 +66,7 @@ module.exports = {
   PLAYER_COUNT,
   TURN_ORDER,
   seatAfter,
+  turnAnchorAfterMeld,
   turnIndicatorFor,
   turnOrderFrom
 };

@@ -69,6 +69,21 @@ test("screenshot hand refuses the eight-character concealed gang that loses the 
   );
 });
 
+test("a player who already won on six characters cannot gang four seven characters when it breaks that winning shape", () => {
+  const handAfterDraw = [
+    "m1", "m2", "m3", "m4", "m5", "m5", "m6",
+    "m7", "m7", "m7", "m7"
+  ];
+  const option = { type: "concealed", tile: "m7", meldIndex: null };
+  const lockedHand = handAfterDraw.slice(0, -1);
+
+  assert.equal(isWinningHand([...lockedHand, "m6"], xuezhan, "s"), true);
+  assert.deepEqual(
+    waitPreservingSelfGangOptions(handAfterDraw, "m7", [option], xuezhan, "s"),
+    []
+  );
+});
+
 test("AI may concealed-gang when every existing wait is preserved", () => {
   const handAfterDraw = [
     "m1", "m1", "m1", "m1",
