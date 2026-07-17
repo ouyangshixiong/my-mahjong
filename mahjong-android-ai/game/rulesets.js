@@ -13,6 +13,8 @@ function tileCounts(tileIds) {
 const SICHUAN_SCORING_PATTERNS = Object.freeze([
   Object.freeze({ id: "baseHu", name: "平胡", fan: 0, type: "base" }),
   Object.freeze({ id: "duiDuiHu", name: "对对胡", fan: 1, type: "allTriplets" }),
+  Object.freeze({ id: "yaoJiu", name: "幺九", fan: 1, type: "terminalInEveryGroup" }),
+  Object.freeze({ id: "duanYaoJiu", name: "断幺九", fan: 1, type: "allSimples" }),
   Object.freeze({ id: "qingYiSe", name: "清一色", fan: 2, type: "pureSuit" }),
   Object.freeze({ id: "qiDui", name: "七对", fan: 2, type: "sevenPairs" })
 ]);
@@ -22,8 +24,8 @@ const DEFAULT_RULESET_ID = "sichuan-xueliu";
 const RULESETS = Object.freeze([
   Object.freeze({
     id: "sichuan-xueliu",
-    version: 5,
-    updatedAt: "2026-07-13T00:00:00+08:00",
+    version: 6,
+    updatedAt: "2026-07-17T00:00:00+08:00",
     name: "四川麻将血流成河",
     description: "三门 108 张，先定缺再换三张；胡牌后不退出，可重复胡牌并即时结算，直到牌墙摸完。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),
@@ -73,8 +75,8 @@ const RULESETS = Object.freeze([
   }),
   Object.freeze({
     id: "sichuan-xuezhan",
-    version: 10,
-    updatedAt: "2026-07-13T00:00:00+08:00",
+    version: 11,
+    updatedAt: "2026-07-17T00:00:00+08:00",
     name: "四川麻将血战",
     description: "三门 108 张，发牌后先定缺再换三张；须换出定缺花色，该花色不足三张时用其他牌补足；不可吃，可碰杠、一炮多响。",
     tileCounts: Object.freeze(tileCounts(SUITED_TILE_IDS)),

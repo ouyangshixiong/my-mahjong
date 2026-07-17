@@ -75,6 +75,8 @@ const PATTERN_TYPES = Object.freeze([
   "sevenPairs",
   "pureSevenPairs",
   "lacksOneSuit",
+  "terminalInEveryGroup",
+  "allSimples",
   "wildcardEach"
 ]);
 const TILE_IDS = new Set(TILE_DEFS.map((tile) => tile.id));

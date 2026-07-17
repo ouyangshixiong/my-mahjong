@@ -577,6 +577,88 @@ function isPureSuit(hand, ruleset) {
   return suits.size === 1;
 }
 
+function isTerminalTile(tile) {
+  assertTile(tile);
+  const def = TILE_BY_ID[tile];
+  return def.suit !== "z" && (def.rank === 1 || def.rank === 9);
+}
+
+function isAllSimples(hand, ruleset) {
+  const normalized = normalizeHand(hand, ruleset);
+  if (ruleset.gameplay.wildcardTile !== null) {
+    throw new Error("allSimples does not support wildcard rulesets");
+  }
+  return normalized.every((tile) => {
+    const def = TILE_BY_ID[tile];
+    return def.suit !== "z" && def.rank >= 2 && def.rank <= 8;
+  });
+}
+
+function canFormTerminalMelds(counts, ruleset) {
+  const tile = firstCountedTile(counts, ruleset);
+  if (tile === undefined) {
+    return true;
+  }
+
+  if (isTerminalTile(tile) && counts[tile] >= 3) {
+    counts[tile] -= 3;
+    if (canFormTerminalMelds(counts, ruleset)) {
+      counts[tile] += 3;
+      return true;
+    }
+    counts[tile] += 3;
+  }
+
+  const def = TILE_BY_ID[tile];
+  if (def.suit !== "z" && (def.rank === 1 || def.rank === 7)) {
+    const second = `${def.suit}${def.rank + 1}`;
+    const third = `${def.suit}${def.rank + 2}`;
+    if (counts[second] > 0 && counts[third] > 0) {
+      counts[tile] -= 1;
+      counts[second] -= 1;
+      counts[third] -= 1;
+      if (canFormTerminalMelds(counts, ruleset)) {
+        counts[tile] += 1;
+        counts[second] += 1;
+        counts[third] += 1;
+        return true;
+      }
+      counts[tile] += 1;
+      counts[second] += 1;
+      counts[third] += 1;
+    }
+  }
+
+  return false;
+}
+
+function hasTerminalInEveryGroup(hand, ruleset) {
+  const normalized = normalizeHand(hand, ruleset);
+  if (normalized.length % 3 !== 2) {
+    return false;
+  }
+  if (ruleset.gameplay.wildcardTile !== null) {
+    throw new Error("terminalInEveryGroup does not support wildcard rulesets");
+  }
+  if (normalized.length === 14 && canFormSevenPairs(normalized, ruleset) && normalized.every(isTerminalTile)) {
+    return true;
+  }
+
+  const counts = countTiles(normalized, ruleset);
+  for (const tile of allowedTileIds(ruleset)) {
+    if (!isTerminalTile(tile) || counts[tile] < 2) {
+      continue;
+    }
+    counts[tile] -= 2;
+    if (canFormTerminalMelds(counts, ruleset)) {
+      counts[tile] += 2;
+      return true;
+    }
+    counts[tile] += 2;
+  }
+  return false;
+}
+
 function isWinningHand(hand, ruleset, lackSuit) {
   const normalized = normalizeHand(hand, ruleset);
   assertLackSuit(lackSuit, ruleset);
@@ -915,6 +997,12 @@ function matchPattern(pattern, hand, ruleset) {
   if (pattern.type === "lacksOneSuit") {
     return { matched: lacksOneSuit(hand, ruleset), fan: pattern.fan };
   }
+  if (pattern.type === "terminalInEveryGroup") {
+    return { matched: hasTerminalInEveryGroup(hand, ruleset), fan: pattern.fan };
+  }
+  if (pattern.type === "allSimples") {
+    return { matched: isAllSimples(hand, ruleset), fan: pattern.fan };
+  }
   if (pattern.type === "wildcardEach") {
     const wildcardTile = ruleset.gameplay.wildcardTile;
     if (wildcardTile === null) {
@@ -1004,5 +1092,7 @@ module.exports = {
   canFormSevenPairs,
   isAllTriplets,
   isPureSuit,
+  hasTerminalInEveryGroup,
+  isAllSimples,
   lacksOneSuit
 };

@@ -50,6 +50,15 @@ test("every ruleset uses a 100-point scoring base", () => {
   }
 });
 
+test("幺九 and 断幺九 are one-fan Sichuan patterns", () => {
+  for (const rulesetId of ["sichuan-xueliu", "sichuan-xuezhan"]) {
+    const ruleset = getRuleset(rulesetId);
+    const patterns = Object.fromEntries(ruleset.scoring.patterns.map((pattern) => [pattern.id, pattern]));
+    assert.equal(patterns.yaoJiu.fan, 1);
+    assert.equal(patterns.duanYaoJiu.fan, 1);
+  }
+});
+
 test("blood-flow permits the same ready hand to self-draw repeatedly", () => {
   const ruleset = getRuleset("sichuan-xueliu");
   const readyHand = sortTiles([

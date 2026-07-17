@@ -81,6 +81,8 @@ const WIN_PATTERN_SOUND_PATHS = Object.freeze({
   "基础胡": "../assets/sounds/nv/patterns/ji-chu-hu.wav",
   "对对胡": "../assets/sounds/nv/patterns/dui-dui-hu.wav",
   "碰碰胡": "../assets/sounds/nv/patterns/peng-peng-hu.wav",
+  "幺九": "../assets/sounds/nv/patterns/yao-jiu.wav",
+  "断幺九": "../assets/sounds/nv/patterns/duan-yao-jiu.wav",
   "清一色": "../assets/sounds/nv/patterns/qing-yi-se.wav",
   "七对": "../assets/sounds/nv/patterns/qi-dui.wav",
   "红中": "../assets/sounds/nv/patterns/hong-zhong.wav",
@@ -1355,6 +1357,92 @@ function isPureSuitLocal(hand, ruleset) {
   return suits.size === 1;
 }
 
+function isTerminalTileLocal(tile) {
+  const def = TILE_BY_ID[tile];
+  if (def === undefined) {
+    throw new Error(`Unknown Mahjong tile: ${tile}`);
+  }
+  const rank = Number.parseInt(tile.slice(1), 10);
+  return def.suitKey !== "z" && (rank === 1 || rank === 9);
+}
+
+function isAllSimplesLocal(hand, ruleset) {
+  if (ruleset.gameplay.wildcardTile !== null) {
+    throw new Error("allSimples does not support wildcard rulesets");
+  }
+  return hand.every((tile) => {
+    const def = TILE_BY_ID[tile];
+    const rank = Number.parseInt(tile.slice(1), 10);
+    return def.suitKey !== "z" && rank >= 2 && rank <= 8;
+  });
+}
+
+function canFormTerminalMeldsLocal(counts, ruleset) {
+  const tile = firstCountedTileLocal(counts, ruleset);
+  if (tile === undefined) {
+    return true;
+  }
+
+  if (isTerminalTileLocal(tile) && counts[tile] >= 3) {
+    counts[tile] -= 3;
+    if (canFormTerminalMeldsLocal(counts, ruleset)) {
+      counts[tile] += 3;
+      return true;
+    }
+    counts[tile] += 3;
+  }
+
+  const def = TILE_BY_ID[tile];
+  const rank = Number.parseInt(tile.slice(1), 10);
+  if (def.suitKey !== "z" && (rank === 1 || rank === 7)) {
+    const second = `${def.suitKey}${rank + 1}`;
+    const third = `${def.suitKey}${rank + 2}`;
+    if (counts[second] > 0 && counts[third] > 0) {
+      counts[tile] -= 1;
+      counts[second] -= 1;
+      counts[third] -= 1;
+      if (canFormTerminalMeldsLocal(counts, ruleset)) {
+        counts[tile] += 1;
+        counts[second] += 1;
+        counts[third] += 1;
+        return true;
+      }
+      counts[tile] += 1;
+      counts[second] += 1;
+      counts[third] += 1;
+    }
+  }
+
+  return false;
+}
+
+function hasTerminalInEveryGroupLocal(hand, ruleset) {
+  const tiles = sortTiles(hand);
+  if (tiles.length % 3 !== 2) {
+    return false;
+  }
+  if (ruleset.gameplay.wildcardTile !== null) {
+    throw new Error("terminalInEveryGroup does not support wildcard rulesets");
+  }
+  if (tiles.length === 14 && canFormSevenPairsLocal(tiles, ruleset) && tiles.every(isTerminalTileLocal)) {
+    return true;
+  }
+
+  const counts = countTilesLocal(tiles, ruleset);
+  for (const tile of allowedTileIds(ruleset)) {
+    if (!isTerminalTileLocal(tile) || counts[tile] < 2) {
+      continue;
+    }
+    counts[tile] -= 2;
+    if (canFormTerminalMeldsLocal(counts, ruleset)) {
+      counts[tile] += 2;
+      return true;
+    }
+    counts[tile] += 2;
+  }
+  return false;
+}
+
 function isWinningHandLocal(hand, ruleset, lackSuit) {
   const tiles = sortTiles(hand);
   assertLackSuitLocal(lackSuit, ruleset);
@@ -1492,6 +1580,14 @@ function matchScoringPatternLocal(pattern, hand, ruleset, melds) {
   }
   if (pattern.type === "lacksOneSuit") {
     return { matched: lacksOneSuitLocal(hand, ruleset), fan: pattern.fan };
+  }
+  if (pattern.type === "terminalInEveryGroup") {
+    const meldsMatch = melds.every((meld) => meld.tiles.some(isTerminalTileLocal));
+    return { matched: meldsMatch && hasTerminalInEveryGroupLocal(hand, ruleset), fan: pattern.fan };
+  }
+  if (pattern.type === "allSimples") {
+    const fullTiles = [...hand, ...melds.flatMap((meld) => meld.tiles)];
+    return { matched: isAllSimplesLocal(fullTiles, ruleset), fan: pattern.fan };
   }
   if (pattern.type === "wildcardEach") {
     const wildcardTile = ruleset.gameplay.wildcardTile;

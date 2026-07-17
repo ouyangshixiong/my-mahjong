@@ -109,7 +109,7 @@ sha256sum /tmp/mahjong-ai-1.0.0.apk
 当前测试包的 SHA-256 应为：
 
 ```text
-ace37a3009d416f7e3e60110436acc4bdb66b5efdc0794566205b893b4fdb38c
+4f0ee518c8f6496b4da7a980cd234908c5cb65590b7a4583f04073aeb5ebbad1
 ```
 
 ## 5. 更新规则和广告

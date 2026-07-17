@@ -362,6 +362,48 @@ test("scores pure seven pairs for xuezhan", () => {
   assert.equal(score.cappedFan, 4);
 });
 
+test("幺九 adds one fan when the pair and every meld contain a terminal", () => {
+  const hand = [
+    "m1", "m2", "m3",
+    "m7", "m8", "m9",
+    "p1", "p2", "p3",
+    "p7", "p8", "p9",
+    "m1", "m1"
+  ];
+  const score = scoreHand(hand, xuezhan, "s");
+  assert.equal(score.isWinning, true);
+  assert.equal(score.totalFan, 1);
+  assert.deepEqual(score.patterns.map((pattern) => pattern.id), ["baseHu", "yaoJiu"]);
+});
+
+test("断幺九 adds one fan when the winning hand has no ones or nines", () => {
+  const hand = [
+    "m2", "m3", "m4",
+    "m4", "m5", "m6",
+    "p2", "p3", "p4",
+    "p6", "p7", "p8",
+    "m5", "m5"
+  ];
+  const score = scoreHand(hand, xuezhan, "s");
+  assert.equal(score.isWinning, true);
+  assert.equal(score.totalFan, 1);
+  assert.deepEqual(score.patterns.map((pattern) => pattern.id), ["baseHu", "duanYaoJiu"]);
+});
+
+test("幺九 stacks with other patterns and doubles the resulting score once", () => {
+  const hand = [
+    "m1", "m2", "m3",
+    "m1", "m2", "m3",
+    "m7", "m8", "m9",
+    "m9", "m9", "m9",
+    "m1", "m1"
+  ];
+  const score = scoreHand(hand, xuezhan, "s");
+  assert.equal(score.totalFan, 3);
+  assert.deepEqual(score.patterns.map((pattern) => pattern.id), ["baseHu", "yaoJiu", "qingYiSe"]);
+  assert.equal(100 * (2 ** score.cappedFan), 800);
+});
+
 test("sichuan analysis rejects a missing dingque declaration", () => {
   assert.throws(
     () => analyzeHand({ hand: ["m1"], visibleTiles: [] }, xuezhan),
